@@ -16,6 +16,7 @@ class BrokerModel:
     slippage: float
     capital_gains_tax: float
     cash_interest_rate: float = 0.0
+    deposit_fx_cost: float = 0.0   # one-time FX cost on fresh PLN deposits only
 
     # ── helpers ────────────────────────────────────────────────────────
 
@@ -69,4 +70,5 @@ def make_broker(cfg_broker: dict) -> BrokerModel:
         slippage=cfg_broker["slippage"],
         capital_gains_tax=cfg_broker["capital_gains_tax"],
         cash_interest_rate=cfg_broker.get("cash_interest_rate", 0.0),
+        deposit_fx_cost=cfg_broker.get("deposit_fx_cost", 0.0),
     )

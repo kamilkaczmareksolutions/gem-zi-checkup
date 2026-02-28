@@ -38,28 +38,28 @@ Podział ten jest kluczowy dla filtra absolute momentum (patrz sekcja 2.2).
 
 ## 2. Sygnał momentum
 
-### 2.1 Obliczanie momentum (12-1)
+### 2.1 Obliczanie momentum (13-1)
 
 Dla każdego ETF-a `e_i` w każdym miesiącu `t`:
 
 ```
-Momentum(e_i, t) = Price(e_i, t-1) / Price(e_i, t-12) - 1
+Momentum(e_i, t) = Price(e_i, t-1) / Price(e_i, t-13) - 1
 ```
 
 Gdzie:
 - `Price(e_i, t-1)` = adjusted close sprzed 1 miesiąca (shift o 1 wiersz w dół)
-- `Price(e_i, t-12)` = adjusted close sprzed 12 miesięcy (shift o 12 wierszy)
+- `Price(e_i, t-13)` = adjusted close sprzed 13 miesięcy (shift o 13 wierszy)
 
-**Ważne:** numerator to cena sprzed 1 miesiąca, nie cena bieżąca. To tzw. "skip-month" — pomija ostatni miesiąc, by uniknąć efektu krótkoterminowego odwrócenia (short-term reversal). Mierzona jest więc stopa zwrotu z okresu od t-12 do t-1 (11 miesięcy wstecz, ale zaczęte 12 miesięcy temu).
+**Ważne:** numerator to cena sprzed 1 miesiąca, nie cena bieżąca. To tzw. "skip-month" — pomija ostatni miesiąc, by uniknąć efektu krótkoterminowego odwrócenia (short-term reversal). Mierzona jest pełna 12-miesięczna stopa zwrotu z okresu od t-13 do t-1.
 
 Implementacja (dosłownie z kodu):
 ```python
 numerator = prices.shift(1)       # cena sprzed 1 miesiąca
-denominator = prices.shift(12)    # cena sprzed 12 miesięcy
+denominator = prices.shift(13)    # cena sprzed 13 miesięcy
 momentum = numerator / denominator - 1.0
 ```
 
-Pierwsze 12 wierszy są NaN (brak wystarczającej historii).
+Pierwsze 13 wierszy są NaN (brak wystarczającej historii).
 
 ### 2.2 Selekcja celu — dual momentum
 
@@ -151,14 +151,20 @@ Dla pełnej rotacji (sprzedaj stary + kup nowy) koszt jest naliczany **dwukrotni
 
 ### 4.2 Profile brokerów
 
-| Parametr | XTB IKE | BOSSA promo | BOSSA standard | Opodatkowany |
-|----------|--------:|------------:|---------------:|-------------:|
-| FX per leg | 0.50% | 0.00% | 0.00% | 0.50% |
-| Prowizja | 0.00% | 0.00% | 0.29% (min 14 PLN) | 0.00% |
-| Slippage | 0.10% | 0.10% | 0.10% | 0.10% |
-| Frakcje | TAK | NIE | NIE | TAK |
-| Podatek | 0% (IKE) | 0% (IKE) | 0% (IKE) | 19% od zysku |
-| **Koszt round-trip** | **~1.2%** | **~0.2%** | **~0.78%+** | **~1.2% + podatek** |
+| Parametr | XTB IKE | BOSSA promo | BOSSA standard | mBank IKE | Opodatkowany |
+|----------|--------:|------------:|---------------:|----------:|-------------:|
+| FX per leg (rotacja) | 0.50% | 0.00% | 0.00% | 0.10% | 0.00% |
+| FX na wpłatach | — | 0.10% | 0.10% | — | 0.20% |
+| Prowizja | 0.00% | 0.00% | 0.29% (min 14 PLN) | 0.00% | 0.00% |
+| Slippage | 0.10% | 0.10% | 0.10% | 0.10% | 0.10% |
+| Frakcje | TAK | NIE | NIE | NIE | TAK |
+| Podatek | 0% (IKE) | 0% (IKE) | 0% (IKE) | 0% (IKE) | 19% od zysku |
+| Subkonta walut. | — | TAK | TAK | NIE | TAK (Walutomat) |
+| **Koszt round-trip** | **~1.2%** | **~0.2%** | **~0.78%+** | **~0.4%** | **~0.2% + podatek** |
+
+**Uwaga o koncie opodatkowanym:** Model zakłada, że inwestor korzysta z Walutomatu, Revolut lub kantoru internetowego do konwersji PLN→USD przy wpłatach (koszt ~0.2%). Rotacje odbywają się w ramach jednej waluty (USD→USD), więc nie generują kosztu FX. Jedynym dodatkowym obciążeniem jest 19% podatek Belki od każdego zrealizowanego zysku.
+
+**Uwaga o mBank:** mBank (eMakler) oferuje 0% prowizji na ETF jako stały element oferty (nie promocja). Koszt FX wynosi 0.1% per leg. Kluczowa różnica vs BOSSA: mBank nie posiada subkont walutowych, więc przy rotacji środki wracają do PLN (sprzedaż), a następnie konwertowane są ponownie na walutę nowego ETF-a (zakup). Łączny koszt FX na rotację: 2 × 0.1% = 0.2%. BOSSA z subkontami walutowymi unika tego kosztu przy rotacjach w ramach jednej waluty.
 
 ### 4.3 Akcje ułamkowe vs pełne jednostki
 
@@ -268,14 +274,13 @@ Dodatkowe porównanie "common window": obcięcie krzywych equity do wspólnej da
 
 ---
 
-## 9. Analiza progu przejścia XTB → BOSSA
+## 9. Analiza progu przejścia XTB → BOSSA / mBank
 
 Dla kapitału początkowego ∈ {5k, 10k, 15k, ..., 200k} PLN:
-- uruchom backtest na XTB IKE z optymalnym deadbandem,
-- uruchom backtest na BOSSA IKE (promo) z optymalnym deadbandem,
+- uruchom backtest na XTB IKE, BOSSA IKE (promo) i mBank IKE z optymalnymi deadbandami,
 - porównaj wartości końcowe.
 
-Szukany "crossover": najniższy kapitał, od którego BOSSA daje wyższą wartość końcową niż XTB.
+Szukany "crossover": najniższy kapitał, od którego dany broker daje wyższą wartość końcową niż XTB.
 
 ---
 
@@ -295,7 +300,7 @@ Wpłata miesięczna ∈ {0, 500, 1000, 2000} PLN. Kapitał jest dodawany na pocz
 
 4. **BOSSA — uproszczenie FX.** Zakładamy, że kapitał już rezyduje na subkoncie walutowym (USD). W praktyce pierwsza wpłata w PLN wymaga jednorazowego przewalutowania (3 darmowe konwersje/rok w BOSSA).
 
-5. **IB01.L ma dane tylko od 2019-02.** Strategia bazowa (U5) efektywnie operuje od ~2020-02 (po 12-miesięcznym lookbacku momentum). Wcześniejsze miesiące korzystają z CBU0.L jako jedynego safe asset.
+5. **IB01.L ma dane tylko od 2019-02.** Strategia bazowa (U5) efektywnie operuje od ~2020-03 (po 13-miesięcznym lookbacku momentum). Wcześniejsze miesiące korzystają z CBU0.L jako jedynego safe asset.
 
 6. **Walk-forward z krótkim oknem treningowym (36 mies.).** Wynika z ograniczenia danych IB01.L. Idealnie powinno być 60+ miesięcy, ale wtedy zostałoby za mało foldów.
 
@@ -312,8 +317,8 @@ GEMv2/
 ├── src/
 │   ├── config.py             ← ładowanie YAML
 │   ├── data.py               ← pobieranie i czyszczenie danych (yfinance)
-│   ├── momentum.py           ← obliczanie momentum 12-1 + selekcja celu
-│   ├── broker.py             ← modele kosztowe brokerów
+│   ├── momentum.py           ← obliczanie momentum 13-1 + selekcja celu
+│   ├── broker.py             ← modele kosztowe brokerów (XTB, BOSSA, mBank, opodatkowany)
 │   ├── backtest.py           ← główna pętla symulacji
 │   ├── metrics.py            ← CAGR, Sharpe, Sortino, MaxDD, Calmar
 │   └── analysis.py           ← sweep deadbandów, walk-forward, timing luck

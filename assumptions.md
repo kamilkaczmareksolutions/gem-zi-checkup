@@ -6,8 +6,9 @@
 - Okres: najdłuższy wspólny zakres dostępnych danych dla danego uniwersum.
 
 ## Momentum
-- Okno: 12 miesięcy z pominięciem ostatniego miesiąca (12-1), zgodne z literaturą akademicką.
-- Formuła: `Momentum(e_i) = AdjClose[t-1] / AdjClose[t-12] - 1`.
+- Okno: pełne 12 miesięcy zwrotu z pominięciem ostatniego miesiąca (13-1), zgodne z literaturą akademicką.
+- Formuła: `Momentum(e_i) = AdjClose[t-1] / AdjClose[t-13] - 1`.
+- Numerator = cena sprzed 1 miesiąca, denominator = cena sprzed 13 miesięcy. Mierzona stopa zwrotu obejmuje pełne 12 miesięcy (od t-13 do t-1).
 
 ## Alokacja
 - 100% kapitału w jednym ETF-ie w danym momencie (strategia all-in).
@@ -25,14 +26,27 @@
 
 ### BOSSA IKE
 - Prowizja: 0% na ETF zagraniczne (promocja do końca lutego 2027). Standardowo: 0.29%, min 14 PLN.
-- Subkonta walutowe: tak (USD, EUR, GBP). Handel w tej samej walucie bez kosztu FX.
+- Subkonta walutowe: tak (USD, EUR, GBP). Handel w tej samej walucie bez kosztu FX przy rotacjach.
+- Przewalutowanie wpłat: 0.1% (PLN→USD). BOSSA daje 3 darmowe konwersje/rok, ale przy miesięcznych wpłatach pozostałe 9 konwersji jest płatnych.
 - Akcje ułamkowe: niedostępne (pełne jednostki, reszta jako cash drag).
 - Podatek: 0% (parasol IKE).
 - Slippage: 0.1%.
 - Źródło: [BOSSA IKE](https://bossa.pl/oferta/IKE-i-IKZE)
 
+### mBank IKE (eMakler)
+- Prowizja: 0% na ETF zagraniczne (stały element oferty, nie promocja).
+- Przewalutowanie: 0.1% na konwersję (per leg). Brak subkont walutowych — przy sprzedaży ETF-a środki wracają do PLN, przy zakupie ponowna konwersja.
+- Akcje ułamkowe: niedostępne (pełne jednostki, reszta jako cash drag).
+- Podatek: 0% (parasol IKE).
+- Slippage: 0.1%.
+- Kluczowa różnica vs BOSSA: mBank nalicza FX na obu nogach rotacji (sell→PLN→buy), BOSSA promo z subkontami walutowymi unika FX przy rotacjach w ramach jednej waluty.
+
 ### Konto opodatkowane (benchmark)
-- Jak XTB IKE, ale z 19% podatkiem od zrealizowanego zysku (podatek Belki).
+- FX na rotacjach: 0% (sprzedaż i zakup w tej samej walucie, np. USD→USD).
+- FX na wpłatach: 0.2% (PLN→USD via Walutomat/Revolut/kantor internetowy).
+- Podatek: 19% od zrealizowanego zysku (podatek Belki).
+- Akcje ułamkowe: dostępne.
+- Slippage: 0.1%.
 
 ## Deadband
 - Próg nieczułości: algorytm zmienia ETF tylko gdy momentum nowego kandydata przewyższa obecny o co najmniej Delta punktów procentowych.
@@ -41,7 +55,7 @@
 - Wariant dynamiczny: `Delta = base + k * sigma(6m)`.
 
 ## Walk-Forward
-- Okno treningowe: 60 miesięcy (5 lat).
+- Okno treningowe: 36 miesięcy (3 lata, skrócone z powodu ograniczeń danych IB01.L).
 - Okno testowe: 12 miesięcy.
 - Krok: 12 miesięcy (brak nakładania się okien testowych).
 
@@ -49,4 +63,4 @@
 - Brak modelowania wpływu na rynek (market impact) — uzasadnione małym portfelem.
 - Ceny wykonania = adjusted close na koniec okresu (brak intraday).
 - Brak modelowania ryzyka walutowego PLN/USD (ETF-y wyceniane w USD/EUR).
-- W BOSSA koszty 3 darmowych przewalutowań PLN->USD/rok nie są modelowane — zakładamy, że kapitał już rezyduje na subkoncie walutowym.
+- BOSSA: 3 darmowe konwersje FX/rok nie są modelowane indywidualnie; zamiast tego stosujemy stały deposit_fx_cost = 0.1% na każdą wpłatę PLN (konserwatywne uproszczenie zakładające miesięczne wpłaty).

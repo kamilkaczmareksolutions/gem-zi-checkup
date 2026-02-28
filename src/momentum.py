@@ -8,10 +8,14 @@ import pandas as pd
 
 def compute_momentum(
     prices: pd.DataFrame,
-    lookback: int = 12,
+    lookback: int = 13,
     skip: int = 1,
 ) -> pd.DataFrame:
-    """Compute 12-1 momentum: return from t-12 to t-1 (skipping recent month).
+    """Compute 12-month momentum with skip-month: return from t-13 to t-1.
+
+    The measurement window spans a full 12 months of returns, starting
+    13 months ago and ending 1 month ago (the most recent month is
+    excluded to avoid short-term reversal noise).
 
     ``momentum_i = price[t - skip] / price[t - lookback] - 1``
 

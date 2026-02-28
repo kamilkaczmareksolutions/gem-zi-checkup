@@ -63,8 +63,8 @@ etf_metadata:
     category: reits
 
 momentum:
-  lookback_months: 12
-  skip_months: 1           # skip most recent month (short-term reversal)
+  lookback_months: 13       # start of window: t-13 (full 12-month return with skip)
+  skip_months: 1            # end of window: t-1 (skip most recent month)
 
 deadband:
   static_range: [0.0, 0.08]
@@ -89,7 +89,8 @@ brokers:
   bossa_ike_promo:
     name: "BOSSA IKE (promo)"
     fractional_shares: false
-    fx_cost_per_leg: 0.0         # subkonta walutowe, same-currency trades
+    fx_cost_per_leg: 0.0         # subkonta walutowe, same-currency trades (rotacje USD→USD)
+    deposit_fx_cost: 0.001       # 0.1% na wpłatach PLN→USD (3 darmowe/rok, reszta płatna)
     commission_pct: 0.0          # 0% promo until Feb 2027
     commission_min_pln: 0.0
     slippage: 0.001
@@ -100,16 +101,28 @@ brokers:
     name: "BOSSA IKE (standard)"
     fractional_shares: false
     fx_cost_per_leg: 0.0
+    deposit_fx_cost: 0.001       # 0.1% na wpłatach PLN→USD
     commission_pct: 0.0029       # 0.29%
     commission_min_pln: 14.0
     slippage: 0.001
     capital_gains_tax: 0.0
     cash_interest_rate: 0.0
 
+  mbank_ike:
+    name: "mBank IKE (eMakler)"
+    fractional_shares: false
+    fx_cost_per_leg: 0.001       # 0.1% per conversion; no currency sub-accounts
+    commission_pct: 0.0          # 0% on ETFs (permanent, not a promo)
+    commission_min_pln: 0.0
+    slippage: 0.001
+    capital_gains_tax: 0.0       # IKE = tax-free
+    cash_interest_rate: 0.0
+
   taxed_account:
     name: "Rachunek opodatkowany"
     fractional_shares: true
-    fx_cost_per_leg: 0.005
+    fx_cost_per_leg: 0.0         # rotations stay in USD (no FX on sell/buy)
+    deposit_fx_cost: 0.002       # 0.2% via Walutomat/Revolut on PLN deposits
     commission_pct: 0.0
     commission_min_pln: 0.0
     slippage: 0.001

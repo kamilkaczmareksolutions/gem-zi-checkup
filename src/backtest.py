@@ -28,7 +28,7 @@ def run_gem(
     safe: list[str],
     initial_capital: float,
     deadband: float = 0.0,
-    lookback: int = 12,
+    lookback: int = 13,
     skip: int = 1,
     monthly_contribution: float = 0.0,
     rebalance_day_offset: int = 0,
@@ -55,12 +55,15 @@ def run_gem(
     start_idx = valid_idx[0]
     ts_range = prices.loc[start_idx:].index
 
-    capital = initial_capital
+    # Apply deposit FX cost to initial capital (PLN → foreign currency)
+    deposit_cost_init = initial_capital * broker.deposit_fx_cost
+    capital = initial_capital - deposit_cost_init
+    total_costs_init = deposit_cost_init
     cash = 0.0
     current_holding: str | None = None
     current_shares: float = 0.0
     cost_basis: float = 0.0
-    total_costs = 0.0
+    total_costs = total_costs_init
     total_taxes = 0.0
     num_rotations = 0
 
@@ -70,7 +73,10 @@ def run_gem(
     holding_series: list[str] = []
 
     for dt in ts_range:
-        capital += monthly_contribution
+        if monthly_contribution > 0:
+            dep_cost = monthly_contribution * broker.deposit_fx_cost
+            capital += monthly_contribution - dep_cost
+            total_costs += dep_cost
 
         if dt not in signals.index:
             # no signal this month, hold position

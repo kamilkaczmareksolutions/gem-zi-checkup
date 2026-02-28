@@ -49,7 +49,7 @@ def run_gem_dynamic_deadband(
     from .momentum import compute_momentum, select_best
 
     all_tickers = [t for t in risky + safe if t in prices.columns]
-    mom = compute_momentum(prices[all_tickers], lookback=12, skip=1)
+    mom = compute_momentum(prices[all_tickers], lookback=13, skip=1)
     rets = prices[all_tickers].pct_change()
     rolling_vol = rets.rolling(vol_window).std().mean(axis=1)
 

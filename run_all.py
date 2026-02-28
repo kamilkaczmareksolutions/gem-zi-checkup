@@ -5,7 +5,7 @@ Produces all artefacts described in the plan:
   - equity curves
   - trade logs
   - deadband heatmaps
-  - broker comparisons (XTB vs BOSSA)
+  - broker comparisons (XTB vs BOSSA vs mBank)
   - universe expansion results
   - walk-forward OOS report
   - final decision memo
@@ -410,16 +410,19 @@ def etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result, prices, 
     contrib_df = pd.DataFrame(contribution_results)
     contrib_df.to_csv(RESULTS / "contribution_scenarios.csv", index=False)
 
-    # Find crossover point: at what capital does BOSSA beat XTB?
-    print("\n  Szukanie progu przejścia XTB -> BOSSA...")
-    crossover_capital = None
+    # Find crossover points: at what capital do BOSSA / mBank beat XTB?
+    ike_brokers = ["xtb_ike", "bossa_ike_promo", "mbank_ike"]
+    ike_brokers = [b for b in ike_brokers if b in brokers]
+    print(f"\n  Analiza crossover dla: {ike_brokers}")
+
     test_capitals = list(range(5000, 200001, 5000))
     crossover_data = []
+    crossover_capitals = {}
+
     for test_cap in test_capitals:
         results_by_broker = {}
-        for bname, broker in brokers.items():
-            if bname not in ("xtb_ike", "bossa_ike_promo"):
-                continue
+        for bname in ike_brokers:
+            broker = brokers[bname]
             db = optimal_dbs.get(bname, {}).get("deadband", 0.03)
             res = run_gem(prices, broker, risky, safe, test_cap, deadband=db)
             m = compute_all(res.equity, label=bname)
@@ -429,67 +432,82 @@ def etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result, prices, 
                 cagr=m["cagr"], final_value=m["final_value"],
             ))
 
-        if "xtb_ike" in results_by_broker and "bossa_ike_promo" in results_by_broker:
-            if (results_by_broker["bossa_ike_promo"]["final_value"] >
-                    results_by_broker["xtb_ike"]["final_value"]):
-                if crossover_capital is None:
-                    crossover_capital = test_cap
+        if "xtb_ike" in results_by_broker:
+            xtb_val = results_by_broker["xtb_ike"]["final_value"]
+            for rival in ike_brokers:
+                if rival == "xtb_ike":
+                    continue
+                if rival in results_by_broker:
+                    if results_by_broker[rival]["final_value"] > xtb_val:
+                        if rival not in crossover_capitals:
+                            crossover_capitals[rival] = test_cap
 
     crossover_df = pd.DataFrame(crossover_data)
     crossover_df.to_csv(RESULTS / "crossover_analysis.csv", index=False)
 
-    if crossover_capital:
-        print(f"    BOSSA > XTB od kapitału ~{crossover_capital:,} PLN")
-    else:
-        print("    BOSSA nie przewyższa XTB w testowanym zakresie"
-              " (lub jest lepsze od samego początku)")
+    for rival, cap_val in crossover_capitals.items():
+        print(f"    {rival} > XTB od kapitału ~{cap_val:,} PLN")
+    if not crossover_capitals:
+        print("    Żaden broker nie przewyższa XTB w testowanym zakresie"
+              " (lub jest lepszy od samego początku)")
+
+    crossover_capital = crossover_capitals.get("bossa_ike_promo")
 
     # plot crossover
     fig, ax = plt.subplots(figsize=(12, 6))
-    for bname in ("xtb_ike", "bossa_ike_promo"):
+    colors = {"xtb_ike": "C0", "bossa_ike_promo": "C1", "mbank_ike": "C2"}
+    for bname in ike_brokers:
         sub = crossover_df[crossover_df["broker"] == bname]
         if not sub.empty:
-            ax.plot(sub["capital"], sub["final_value"], label=bname, linewidth=1.5)
-    if crossover_capital:
-        ax.axvline(crossover_capital, color="red", linestyle="--", alpha=0.7,
-                   label=f"Crossover ~{crossover_capital:,} PLN")
+            ax.plot(sub["capital"], sub["final_value"],
+                    label=brokers[bname].name, linewidth=1.5,
+                    color=colors.get(bname))
+    for rival, cap_val in crossover_capitals.items():
+        ax.axvline(cap_val, linestyle="--", alpha=0.7,
+                   color=colors.get(rival, "gray"),
+                   label=f"Crossover {rival} ~{cap_val:,} PLN")
     ax.set_xlabel("Kapitał początkowy (PLN)")
     ax.set_ylabel("Wartość końcowa (PLN)")
-    ax.set_title("XTB vs BOSSA — próg przejścia wg kapitału")
+    ax.set_title("XTB vs BOSSA vs mBank — próg przejścia wg kapitału")
     ax.legend()
     ax.grid(True, alpha=0.3)
-    save_fig(fig, "crossover_xtb_vs_bossa.png")
+    save_fig(fig, "crossover_brokers.png")
 
     # Generate decision memo
     _write_decision_memo(cfg, baseline_summary, optimal_dbs, universe_comp,
-                         wf_result, crossover_capital, contrib_df)
+                         wf_result, crossover_capitals, contrib_df, brokers)
 
 
 def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
-                         wf_result, crossover_capital, contrib_df):
+                         wf_result, crossover_capitals, contrib_df, brokers):
     cap = cfg["portfolio"]["initial_capital_pln"]
 
-    # Determine recommended broker
-    xtb_metrics = baseline[baseline["broker"] == "xtb_ike"].iloc[0] if "xtb_ike" in baseline["broker"].values else None
-    bossa_metrics = baseline[baseline["broker"] == "bossa_ike_promo"].iloc[0] if "bossa_ike_promo" in baseline["broker"].values else None
+    # Gather baseline metrics for all IKE brokers
+    ike_keys = ["xtb_ike", "bossa_ike_promo", "mbank_ike"]
+    ike_metrics = {}
+    for bk in ike_keys:
+        if bk in baseline["broker"].values:
+            ike_metrics[bk] = baseline[baseline["broker"] == bk].iloc[0]
 
-    if xtb_metrics is not None and bossa_metrics is not None:
-        if xtb_metrics["final_value"] > bossa_metrics["final_value"]:
-            rec_broker = "XTB IKE"
-            rec_reason = (f"Przy kapitale {cap:.0f} PLN, akcje ułamkowe XTB kompensują "
-                          f"koszt FX (wartość końcowa {xtb_metrics['final_value']:.0f} "
-                          f"vs {bossa_metrics['final_value']:.0f} PLN na BOSSA).")
-        else:
-            rec_broker = "BOSSA IKE"
-            rec_reason = (f"Brak kosztów FX na BOSSA daje lepszy wynik nawet przy "
-                          f"{cap:.0f} PLN kapitału.")
+    # Determine best broker at current capital
+    if ike_metrics:
+        best_bk = max(ike_metrics, key=lambda k: ike_metrics[k]["final_value"])
+        rec_broker = brokers[best_bk].name if best_bk in brokers else best_bk
+        vals = {bk: f"{ike_metrics[bk]['final_value']:.0f}" for bk in ike_metrics}
+        vals_str = ", ".join(f"{brokers[bk].name}={v} PLN" for bk, v in vals.items() if bk in brokers)
+        rec_reason = (f"Przy kapitale {cap:.0f} PLN, najlepszy wynik końcowy daje "
+                      f"{rec_broker} ({vals_str}).")
     else:
         rec_broker = "XTB IKE"
         rec_reason = "Brak danych porównawczych."
 
-    # recommended deadband
-    xtb_db = optimal_dbs.get("xtb_ike", {}).get("deadband", 0.03)
-    bossa_db = optimal_dbs.get("bossa_ike_promo", {}).get("deadband", 0.0)
+    # recommended deadbands
+    db_rows = []
+    for bk in ike_keys:
+        if bk in optimal_dbs:
+            db_val = optimal_dbs[bk].get("deadband", 0.0)
+            label = brokers[bk].name if bk in brokers else bk
+            db_rows.append(f"| {label} | {db_val:.3f} ({db_val*100:.1f}%) |")
 
     # recommended universe
     if universe_comp is not None and not universe_comp.empty:
@@ -521,25 +539,33 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
 
 {rec_reason}
 
-### Warunek migracji
+### Porównanie modeli kosztowych
+
+| Broker | FX/leg | Prowizja | Frakcje | Uwagi |
+|--------|--------|----------|---------|-------|
+| XTB IKE | 0.5% | 0% | Tak | Wysoki FX, brak cash drag |
+| BOSSA IKE (promo) | 0% | 0% (promo) | Nie | Subkonta walutowe, promo do 2027 |
+| mBank IKE (eMakler) | 0.1% | 0% (stale) | Nie | Brak subkont walutowych, FX na obu nogach rotacji |
+
+### Warunki migracji
 """
-    if crossover_capital:
-        memo += f"""- Gdy kapitał na IKE przekroczy ~{crossover_capital:,} PLN, rozważ migrację do BOSSA IKE.
-- Przy BOSSA eliminujesz koszty FX (~1% na rotację), co deklasuje cash drag z braku frakcji.
-"""
-    else:
-        memo += "- BOSSA jest lepsze od samego początku (lub brak jednoznacznego crossovera w danych).\n"
+    for rival, cap_val in crossover_capitals.items():
+        rival_name = brokers[rival].name if rival in brokers else rival
+        memo += f"- {rival_name} > XTB od kapitału ~{cap_val:,} PLN\n"
+    if not crossover_capitals:
+        memo += "- Żaden alternatywny broker nie bije XTB w testowanym zakresie (lub jest lepszy od początku).\n"
 
     memo += f"""
 ## 2. Optymalny deadband
 
 | Broker | Deadband |
 |--------|----------|
-| XTB IKE | {xtb_db:.3f} ({xtb_db*100:.1f}%) |
-| BOSSA IKE | {bossa_db:.3f} ({bossa_db*100:.1f}%) |
+{chr(10).join(db_rows)}
 
 Deadband chroni przed whipsawingiem i kompensuje koszty transakcyjne.
 Przy XTB wyższy próg jest konieczny ze względu na 1% koszt FX na rotację.
+mBank ma niższy koszt FX (0.2% round-trip), ale brak subkont walutowych
+powoduje naliczenie FX na obu nogach każdej rotacji.
 
 ## 3. Uniwersum ETF
 
@@ -565,8 +591,8 @@ Rekomendowane: **{rec_universe}**
     memo += """
 ## Podsumowanie decyzji
 
-1. **Zostań na obecnym brokerze** jeśli spełnia warunek kosztowy, inaczej migruj.
-2. **Ustaw deadband** na poziomie wskazanym powyżej.
+1. **Wybierz brokera** wg powyższej tabeli kosztowej i progu crossover.
+2. **Ustaw deadband** na poziomie wskazanym powyżej dla wybranego brokera.
 3. **Rozważ rozszerzenie koszyka** jeśli dane OOS to potwierdzają.
 4. **Regularnie wpłacaj** — nawet małe kwoty znacząco podnoszą wartość końcową dzięki procentowi składanemu w parasolu IKE.
 """
