@@ -1,0 +1,138 @@
+data:
+  start_date: "2012-01-01"
+  end_date: "2026-02-28"
+  freq: "monthly"          # month-end adjusted close
+  source: "yfinance"
+
+universes:
+  U5:
+    risky: ["CNDX.L", "EIMI.L", "IWDA.L"]
+    safe:  ["IB01.L", "CBU0.L"]
+  U7:
+    risky: ["CNDX.L", "EIMI.L", "IWDA.L", "IGLN.L", "WSML.L"]
+    safe:  ["IB01.L", "CBU0.L"]
+  U9:
+    risky: ["CNDX.L", "EIMI.L", "IWDA.L", "IGLN.L", "WSML.L", "IEUX.L", "DPYA.L"]
+    safe:  ["IB01.L", "CBU0.L"]
+
+etf_metadata:
+  CNDX.L:
+    name: "iShares NASDAQ 100 UCITS ETF USD (Acc)"
+    class: risky
+    currency: USD
+    category: us_tech
+  EIMI.L:
+    name: "iShares Core MSCI EM IMI UCITS ETF"
+    class: risky
+    currency: USD
+    category: emerging_markets
+  IWDA.L:
+    name: "iShares Core MSCI World UCITS ETF USD (Acc)"
+    class: risky
+    currency: USD
+    category: developed_world
+  IB01.L:
+    name: "iShares $ Treasury Bond 0-1yr UCITS ETF USD (Acc)"
+    class: safe
+    currency: USD
+    category: short_bonds
+  CBU0.L:
+    name: "iShares $ Treasury Bond 7-10yr UCITS ETF USD (Acc)"
+    class: safe
+    currency: USD
+    category: long_bonds
+  IGLN.L:
+    name: "iShares Physical Gold ETC"
+    class: risky
+    currency: USD
+    category: gold
+  WSML.L:
+    name: "iShares MSCI World Small Cap UCITS ETF"
+    class: risky
+    currency: USD
+    category: small_cap
+  IEUX.L:
+    name: "iShares Core MSCI Europe UCITS ETF EUR (Acc)"
+    class: risky
+    currency: EUR
+    category: developed_ex_us
+  DPYA.L:
+    name: "iShares Developed Markets Property Yield UCITS ETF"
+    class: risky
+    currency: USD
+    category: reits
+
+momentum:
+  lookback_months: 12
+  skip_months: 1           # skip most recent month (short-term reversal)
+
+deadband:
+  static_range: [0.0, 0.08]
+  static_step: 0.002       # 0.2 pp increments -> 41 points (finer grid)
+  dynamic:
+    base: 0.02
+    k_range: [0.05, 0.20]
+    k_step: 0.05
+    vol_window_months: 6
+
+brokers:
+  xtb_ike:
+    name: "XTB IKE"
+    fractional_shares: true
+    fx_cost_per_leg: 0.005       # 0.5% each way -> 1.0% round trip
+    commission_pct: 0.0          # 0% up to 100k EUR/month
+    commission_min_pln: 0.0
+    slippage: 0.001
+    capital_gains_tax: 0.0       # IKE = tax-free
+    cash_interest_rate: 0.02     # ~2% on idle cash (conservative)
+
+  bossa_ike_promo:
+    name: "BOSSA IKE (promo)"
+    fractional_shares: false
+    fx_cost_per_leg: 0.0         # subkonta walutowe, same-currency trades
+    commission_pct: 0.0          # 0% promo until Feb 2027
+    commission_min_pln: 0.0
+    slippage: 0.001
+    capital_gains_tax: 0.0
+    cash_interest_rate: 0.0
+
+  bossa_ike_standard:
+    name: "BOSSA IKE (standard)"
+    fractional_shares: false
+    fx_cost_per_leg: 0.0
+    commission_pct: 0.0029       # 0.29%
+    commission_min_pln: 14.0
+    slippage: 0.001
+    capital_gains_tax: 0.0
+    cash_interest_rate: 0.0
+
+  taxed_account:
+    name: "Rachunek opodatkowany"
+    fractional_shares: true
+    fx_cost_per_leg: 0.005
+    commission_pct: 0.0
+    commission_min_pln: 0.0
+    slippage: 0.001
+    capital_gains_tax: 0.19      # 19% podatek Belki
+    cash_interest_rate: 0.0
+
+portfolio:
+  initial_capital_pln: 9000.0
+  monthly_contribution_pln: 0.0     # base scenario: no new contributions
+  contribution_scenarios:
+    - 0
+    - 500
+    - 1000
+    - 2000
+
+walk_forward:
+  train_months: 36          # 3 years training (shorter for limited data)
+  test_months: 12           # 1 year test
+  step_months: 12           # rolling step
+
+rebalance_days:
+  - 1                       # 1st business day of month
+  - 5
+  - 10
+  - 15
+  - 20                      # sensitivity to timing luck
