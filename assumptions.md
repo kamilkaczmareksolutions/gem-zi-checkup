@@ -51,8 +51,9 @@
 ## Deadband
 - Próg nieczułości: algorytm zmienia ETF tylko gdy momentum nowego kandydata przewyższa obecny o co najmniej Delta punktów procentowych.
 - Deadband chroni przed whipsawingiem i kompensuje koszty transakcyjne.
-- Zakres testów: 0.0% do 6.0% co 0.25 pp.
+- Zakres testów: 0.0% do 8.0% co 0.2 pp.
 - Wariant dynamiczny: `Delta = base + k * sigma(6m)`.
+- Wybór optymalnego: **blend IS + OOS** — IS optimum (z constraint MaxDD <= benchmark, oceniany na najtańszym brokerze IKE) uśredniany ze średnią OOS z walk-forward. Jeden deadband dla wszystkich brokerów.
 
 ## Walk-Forward
 - Okno treningowe: 36 miesięcy (3 lata, skrócone z powodu ograniczeń danych IB01.L).

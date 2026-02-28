@@ -204,7 +204,7 @@ def etap3(cfg, prices, brokers):
 #  ETAP 4 — Deadband calibration
 # ════════════════════════════════════════════════════════════════════
 
-def etap4(cfg, prices, brokers, benchmark_metrics):
+def etap4(cfg, prices, brokers, benchmark_metrics, baseline_summary):
     print_header("ETAP 4: Kalibracja deadbandu (statyczny + dynamiczny)")
     u5 = cfg["universes"]["U5"]
     risky = [t for t in u5["risky"] if t in prices.columns]
@@ -215,7 +215,6 @@ def etap4(cfg, prices, brokers, benchmark_metrics):
     bench_maxdd = benchmark_metrics.get("max_drawdown", -1.0) if benchmark_metrics else -1.0
     bench_cagr = benchmark_metrics.get("cagr", 0.0) if benchmark_metrics else 0.0
     print(f"\n  Benchmark: CAGR={bench_cagr:.2%}, MaxDD={bench_maxdd:.2%}")
-    print(f"  Reguła: MaxDD strategii <= MaxDD benchmarku, potem max excess CAGR")
 
     deadbands = list(np.arange(
         db_cfg["static_range"][0],
@@ -223,36 +222,54 @@ def etap4(cfg, prices, brokers, benchmark_metrics):
         db_cfg["static_step"],
     ))
 
+    # Identify cheapest IKE broker (highest baseline final_value = lowest friction)
+    ike_keys = ["xtb_ike", "bossa_ike_promo", "bossa_ike_standard", "mbank_ike"]
+    ike_in_bl = baseline_summary[baseline_summary["broker"].isin(ike_keys)]
+    if not ike_in_bl.empty:
+        ref_broker_name = ike_in_bl.loc[ike_in_bl["final_value"].idxmax(), "broker"]
+    else:
+        ref_broker_name = list(brokers.keys())[0]
+    ref_broker = brokers[ref_broker_name]
+
+    print(f"\n  Broker referencyjny (najtańszy IKE): {ref_broker.name}")
+    print(f"  MaxDD constraint oceniany na brokerze z najniższymi tarciami")
+
+    # Sweep on reference broker → IS optimum with MaxDD constraint
+    ref_sweep = sweep_deadbands(prices, ref_broker, risky, safe, cap, deadbands)
+    ref_sweep["excess_cagr"] = ref_sweep["cagr"] - bench_cagr
+    ref_sweep.to_csv(RESULTS / f"deadband_sweep_reference_{ref_broker_name}.csv", index=False)
+
+    safe_df = ref_sweep[ref_sweep["max_drawdown"] >= bench_maxdd]
+    if not safe_df.empty:
+        best_idx = safe_df["excess_cagr"].idxmax()
+        best_row = safe_df.loc[best_idx]
+        selection_note = f"MaxDD <= benchmark (ref: {ref_broker.name})"
+    else:
+        best_idx = ref_sweep["max_drawdown"].idxmax()
+        best_row = ref_sweep.loc[best_idx]
+        selection_note = f"fallback: min MaxDD (none passed filter on {ref_broker.name})"
+
+    is_optimal_db = float(best_row["deadband"])
+    print(f"\n  IS optymalny deadband = {is_optimal_db:.3f} ({is_optimal_db*100:.1f}%) [{selection_note}]")
+    print(f"    CAGR = {best_row['cagr']:.2%} (excess: {best_row['excess_cagr']:+.2%}), "
+          f"MaxDD = {best_row['max_drawdown']:.2%}, Rotacje = {int(best_row['rotations'])}")
+
+    # Per-broker metrics at IS optimal deadband
     optimal = {}
     for bname, broker in brokers.items():
-        df = sweep_deadbands(prices, broker, risky, safe, cap, deadbands)
-        df["excess_cagr"] = df["cagr"] - bench_cagr
-
-        # Filter: MaxDD must not exceed benchmark MaxDD
-        safe_df = df[df["max_drawdown"] >= bench_maxdd]  # maxdd is negative
-
-        if not safe_df.empty:
-            best_idx = safe_df["excess_cagr"].idxmax()
-            best_row = safe_df.loc[best_idx]
-            selection_note = "MaxDD <= benchmark"
-        else:
-            # No deadband passes the drawdown filter — fall back to min drawdown
-            best_idx = df["max_drawdown"].idxmax()  # least negative
-            best_row = df.loc[best_idx]
-            selection_note = "fallback: min MaxDD (none passed benchmark filter)"
-
+        res = run_gem(prices, broker, risky, safe, cap, deadband=is_optimal_db)
+        m = compute_all(res.equity, label=broker.name)
         optimal[bname] = dict(
-            deadband=best_row["deadband"],
-            sharpe=best_row["sharpe"],
-            cagr=best_row["cagr"],
-            excess_cagr=best_row["cagr"] - bench_cagr,
-            max_drawdown=best_row["max_drawdown"],
-            rotations=best_row["rotations"],
+            deadband=is_optimal_db,
+            sharpe=m["sharpe"],
+            cagr=m["cagr"],
+            excess_cagr=m["cagr"] - bench_cagr,
+            max_drawdown=m["max_drawdown"],
+            rotations=res.num_rotations,
         )
-        print(f"\n  {broker.name}: optymalny deadband = {best_row['deadband']:.3f} ({selection_note})")
-        print(f"    CAGR = {best_row['cagr']:.2%} (excess: {best_row['cagr'] - bench_cagr:+.2%}), "
-              f"Sharpe = {best_row['sharpe']:.2f}, "
-              f"MaxDD = {best_row['max_drawdown']:.2%}, Rotacje = {int(best_row['rotations'])}")
+        print(f"\n  {broker.name} @ db={is_optimal_db:.3f}:")
+        print(f"    CAGR = {m['cagr']:.2%} (excess: {m['cagr'] - bench_cagr:+.2%}), "
+              f"Sharpe = {m['sharpe']:.2f}, MaxDD = {m['max_drawdown']:.2%}")
 
     # Dynamic deadband tests
     dyn_cfg = db_cfg["dynamic"]
@@ -286,7 +303,7 @@ def etap4(cfg, prices, brokers, benchmark_metrics):
         print(f"    {bname}: best k={best['k']:.2f}, Sharpe={best['sharpe']:.2f}, "
               f"CAGR={best['cagr']:.2%}")
 
-    return optimal, dyn_df
+    return is_optimal_db, optimal, ref_broker_name, dyn_df
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -426,7 +443,7 @@ def etap6(cfg, prices, daily_prices, broker, optimal_db):
 #  ETAP 7 — Decision memo
 # ════════════════════════════════════════════════════════════════════
 
-def etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result, prices, brokers, benchmark_metrics=None):
+def etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result, prices, brokers, benchmark_metrics=None, blend_info=None):
     print_header("ETAP 7: Rekomendacja końcowa")
 
     cap = cfg["portfolio"]["initial_capital_pln"]
@@ -520,12 +537,12 @@ def etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result, prices, 
     # Generate decision memo
     _write_decision_memo(cfg, baseline_summary, optimal_dbs, universe_comp,
                          wf_result, crossover_capitals, contrib_df, brokers,
-                         benchmark_metrics)
+                         benchmark_metrics, blend_info)
 
 
 def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
                          wf_result, crossover_capitals, contrib_df, brokers,
-                         benchmark_metrics=None):
+                         benchmark_metrics=None, blend_info=None):
     cap = cfg["portfolio"]["initial_capital_pln"]
 
     # Gather baseline metrics for all IKE brokers
@@ -547,14 +564,21 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
         rec_broker = "XTB IKE"
         rec_reason = "Brak danych porównawczych."
 
-    # recommended deadbands
+    # Blended deadband — single value for all brokers
+    blended_db = blend_info["blended_snapped"] if blend_info else 0.03
+    is_opt = blend_info["is_optimal"] if blend_info else blended_db
+    oos_avg = blend_info.get("oos_avg") if blend_info else None
+    oos_median = blend_info.get("oos_median") if blend_info else None
+    ref_broker_label = blend_info.get("ref_broker_name", "") if blend_info else ""
+
+    # Per-broker metrics at blended deadband
     db_rows = []
     for bk in ike_keys:
         if bk in optimal_dbs:
-            db_val = optimal_dbs[bk].get("deadband", 0.0)
             excess = optimal_dbs[bk].get("excess_cagr", 0.0)
+            maxdd = optimal_dbs[bk].get("max_drawdown", 0.0)
             label = brokers[bk].name if bk in brokers else bk
-            db_rows.append(f"| {label} | {db_val:.3f} ({db_val*100:.1f}%) | {excess:+.2%} |")
+            db_rows.append(f"| {label} | {excess:+.2%} | {maxdd:.2%} | {optimal_dbs[bk].get('sharpe', 0):.2f} |")
 
     # recommended universe
     if universe_comp is not None and not universe_comp.empty:
@@ -569,9 +593,9 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
     # OOS validation
     if wf_result and "folds" in wf_result and not wf_result["folds"].empty:
         avg_oos_ret = wf_result["folds"]["oos_return"].mean()
-        avg_db = np.mean(wf_result["selected_deadbands"]) if wf_result["selected_deadbands"] else 0
-        oos_note = (f"Średni OOS return per fold: {avg_oos_ret:.2%}. "
-                    f"Średni wybrany deadband: {avg_db:.3f}.")
+        oos_note = f"Średni OOS return per fold: {avg_oos_ret:.2%}."
+        if blend_info and blend_info.get("oos_deadbands"):
+            oos_note += f"\nWybrane deadbandy per fold: {[f'{d:.3f}' for d in blend_info['oos_deadbands']]}"
     else:
         oos_note = "Za mało danych na pełną walidację walk-forward."
 
@@ -602,9 +626,9 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
     if not crossover_capitals:
         memo += "- Żaden alternatywny broker nie bije XTB w testowanym zakresie (lub jest lepszy od początku).\n"
 
-    # benchmark line
+    # benchmark section
     if benchmark_metrics:
-        bench_ticker = benchmark_metrics.get("ticker", "VWRL.L")
+        bench_ticker = benchmark_metrics.get("ticker", "IWDA.L")
         bench_cagr = benchmark_metrics.get("cagr", 0)
         bench_maxdd = benchmark_metrics.get("max_drawdown", 0)
         bench_final = benchmark_metrics.get("final_value", 0)
@@ -613,26 +637,47 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
 - CAGR: {bench_cagr:.2%}
 - MaxDD: {bench_maxdd:.2%}
 - Wartość końcowa: {bench_final:,.0f} PLN
-
-Reguła GEM: strategia ma sens tylko jeśli **MaxDD strategii <= MaxDD benchmarku**.
-Optymalny deadband = najwyższy excess return nad benchmark spośród wariantów spełniających ten warunek.
 """
     else:
         bench_section = ""
 
     memo += bench_section
 
-    memo += f"""
-## 2. Optymalny deadband
+    # Blend methodology section
+    blend_section = f"""
+## 2. Optymalny deadband — metodologia blend IS + OOS
 
-| Broker | Deadband | Excess CAGR |
-|--------|----------|-------------|
+**Wynik: deadband = {blended_db:.3f} ({blended_db*100:.1f}%)** (jednakowy dla wszystkich brokerów)
+
+### Jak obliczono:
+1. **Broker referencyjny**: {ref_broker_label} (najtańszy IKE — najniższe tarcia kosztowe)
+2. **IS optymalny** (in-sample): {is_opt:.3f} ({is_opt*100:.1f}%) — najwyższy excess CAGR
+   spośród deadbandów, których MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku
+"""
+    if oos_avg is not None:
+        blend_section += f"""3. **OOS średnia** (walk-forward): {oos_avg:.3f} ({oos_avg*100:.1f}%)
+4. **OOS mediana** (walk-forward): {oos_median:.3f} ({oos_median*100:.1f}%)
+5. **Blend** = (IS optymalny + OOS średnia) / 2 = ({is_opt:.3f} + {oos_avg:.3f}) / 2 = {blend_info['blended_raw']:.4f}
+   → zaokrąglony do siatki: **{blended_db:.3f} ({blended_db*100:.1f}%)**
+
+Dlaczego blend: sam IS optymalny ({is_opt*100:.1f}%) jest podatny na overfitting do danych
+historycznych. OOS średnia ({oos_avg*100:.1f}%) pokazuje, co faktycznie wybiera walk-forward
+na nowych danych. Uśrednienie daje kompromis odporny na overfitting.
+"""
+    else:
+        blend_section += "\nBrak danych OOS — użyty IS optymalny bez korekty.\n"
+
+    blend_section += f"""
+### Wyniki per broker @ deadband = {blended_db:.3f}
+
+| Broker | Excess CAGR | MaxDD | Sharpe |
+|--------|-------------|-------|--------|
 {chr(10).join(db_rows)}
 
-Kryterium wyboru: spośród deadbandów, których MaxDD nie przekracza MaxDD benchmarku,
-wybierany jest ten z najwyższym excess CAGR (nadwyżką nad benchmark).
+"""
+    memo += blend_section
 
-## 3. Uniwersum ETF
+    memo += f"""## 3. Uniwersum ETF
 
 Rekomendowane: **{rec_universe}**
 {rec_univ_detail}
@@ -653,11 +698,11 @@ Rekomendowane: **{rec_universe}**
         )
         memo += pivot.to_markdown() + "\n"
 
-    memo += """
+    memo += f"""
 ## Podsumowanie decyzji
 
 1. **Wybierz brokera** wg powyższej tabeli kosztowej i progu crossover.
-2. **Ustaw deadband** na poziomie wskazanym powyżej dla wybranego brokera.
+2. **Ustaw deadband** na **{blended_db*100:.1f}%** (blend IS + OOS, odporny na overfitting).
 3. **Rozważ rozszerzenie koszyka** jeśli dane OOS to potwierdzają.
 4. **Regularnie wpłacaj** — nawet małe kwoty znacząco podnoszą wartość końcową dzięki procentowi składanemu w parasolu IKE.
 """
@@ -721,21 +766,79 @@ def main():
     # ETAP 3 — broker comparison with deadband sweep
     all_sweep = etap3(cfg, prices, brokers)
 
-    # ETAP 4 — deadband calibration
-    optimal_dbs, dyn_df = etap4(cfg, prices, brokers, benchmark_metrics)
+    # ETAP 4 — deadband calibration (MaxDD constraint from cheapest IKE)
+    is_optimal_db, optimal_dbs, ref_broker_name, dyn_df = etap4(
+        cfg, prices, brokers, benchmark_metrics, baseline_summary
+    )
+    ref_broker = brokers[ref_broker_name]
 
-    # ETAP 5 — universe expansion (use XTB as primary broker)
-    primary_broker_name = "xtb_ike"
-    primary_broker = brokers[primary_broker_name]
-    primary_db = optimal_dbs.get(primary_broker_name, {}).get("deadband", 0.03)
-    universe_comp = etap5(cfg, prices, primary_broker, primary_db)
+    # ETAP 5 — universe expansion (use cheapest IKE as reference)
+    universe_comp = etap5(cfg, prices, ref_broker, is_optimal_db)
 
-    # ETAP 6 — robustness
-    wf_result = etap6(cfg, prices, daily_prices, primary_broker, primary_db)
+    # ETAP 6 — robustness (walk-forward, timing luck, cost sensitivity)
+    wf_result = etap6(cfg, prices, daily_prices, ref_broker, is_optimal_db)
+
+    # ── Blend IS + OOS → final recommended deadband ──
+    db_cfg = cfg["deadband"]
+    deadbands = list(np.arange(
+        db_cfg["static_range"][0],
+        db_cfg["static_range"][1] + db_cfg["static_step"],
+        db_cfg["static_step"],
+    ))
+
+    oos_dbs = wf_result.get("selected_deadbands", [])
+    if oos_dbs:
+        oos_avg = float(np.mean(oos_dbs))
+        oos_median = float(np.median(oos_dbs))
+        blended_raw = (is_optimal_db + oos_avg) / 2
+        blended_db = float(min(deadbands, key=lambda x: abs(x - blended_raw)))
+    else:
+        oos_avg = None
+        oos_median = None
+        blended_raw = is_optimal_db
+        blended_db = is_optimal_db
+
+    blend_info = dict(
+        is_optimal=is_optimal_db,
+        oos_avg=oos_avg,
+        oos_median=oos_median,
+        blended_raw=blended_raw,
+        blended_snapped=blended_db,
+        ref_broker=ref_broker_name,
+        ref_broker_name=ref_broker.name,
+        oos_deadbands=oos_dbs,
+    )
+
+    print(f"\n  ── Blend IS + OOS ──")
+    print(f"  IS optymalny (z {ref_broker.name}): {is_optimal_db:.3f} ({is_optimal_db*100:.1f}%)")
+    if oos_avg is not None:
+        print(f"  OOS średnia: {oos_avg:.3f} ({oos_avg*100:.1f}%)")
+        print(f"  OOS mediana: {oos_median:.3f} ({oos_median*100:.1f}%)")
+        print(f"  Blend (IS + OOS avg) / 2: {blended_raw:.4f} → snapped: {blended_db:.3f} ({blended_db*100:.1f}%)")
+    else:
+        print(f"  Brak danych OOS — używany IS optymalny")
+
+    # Re-compute per-broker metrics at blended deadband
+    bench_cagr = benchmark_metrics.get("cagr", 0.0) if benchmark_metrics else 0.0
+    u5 = cfg["universes"]["U5"]
+    risky = [t for t in u5["risky"] if t in prices.columns]
+    safe = [t for t in u5["safe"] if t in prices.columns]
+
+    for bname, broker in brokers.items():
+        res = run_gem(prices, broker, risky, safe, cap, deadband=blended_db)
+        m = compute_all(res.equity, label=bname)
+        optimal_dbs[bname] = dict(
+            deadband=blended_db,
+            sharpe=m["sharpe"],
+            cagr=m["cagr"],
+            excess_cagr=m["cagr"] - bench_cagr,
+            max_drawdown=m["max_drawdown"],
+            rotations=res.num_rotations,
+        )
 
     # ETAP 7 — decision
     etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result,
-          prices, brokers, benchmark_metrics)
+          prices, brokers, benchmark_metrics, blend_info)
 
     print_header("ANALIZA ZAKOŃCZONA")
     print(f"  Wyniki zapisane w: {RESULTS}")

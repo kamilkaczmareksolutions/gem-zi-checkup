@@ -131,6 +131,25 @@ if not regime_change and spread < deadband:
 - `k` ∈ {0.05, 0.10, 0.15, 0.20}
 - `sigma_avg(6m)` = średnie 6-miesięczne odchylenie standardowe miesięcznych stóp zwrotu, uśrednione po wszystkich ETF-ach w koszyku
 
+### Wybór optymalnego deadbandu — blend IS + OOS
+
+Finalny deadband jest wyznaczany trójstopniowo, by uniknąć overfittingu do danych historycznych:
+
+1. **Broker referencyjny** — automatycznie wyznaczany jako najtańszy IKE (najwyższa wartość końcowa w baseline). MaxDD strategii jest oceniany na tym brokerze, ponieważ najniższe tarcia kosztowe dają najczystszy obraz "prawdziwego" MaxDD strategii.
+
+2. **IS optymalny** (in-sample) — z siatki deadbandów wybierany jest ten, którego MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku (IWDA.L, pasywny buy-and-hold), a jednocześnie daje najwyższy excess CAGR nad benchmarkiem.
+
+3. **Blend z OOS** — walk-forward generuje per fold najlepszy deadband (po Sharpe). Średnia OOS deadbandów (`oos_avg`) jest uśredniana z IS optimum:
+
+```
+blended = (IS_optimum + OOS_average) / 2
+→ zaokrąglony do najbliższego punktu na siatce testowanych deadbandów
+```
+
+Motywacja: sam IS optimum jest podatny na overfitting (np. 6.8% na danych historycznych). OOS średnia (np. 3.0%) pokazuje, co walk-forward faktycznie wybiera na nowych danych. Uśrednienie daje kompromis odporny na overfitting.
+
+**Jeden deadband dla wszystkich brokerów** — strategia momentum jest niezależna od brokera; broker wpływa tylko na koszty, nie na sygnał. Dlatego finalny blended deadband jest stosowany jednolicie.
+
 ---
 
 ## 4. Model kosztów i egzekucji (broker)
@@ -298,7 +317,7 @@ Wpłata miesięczna ∈ {0, 500, 1000, 2000} PLN. Kapitał jest dodawany na pocz
 
 3. **Brak modelowania wpływu na rynek** (market impact). Uzasadnione małym portfelem (9k PLN), ale mogłoby mieć znaczenie przy >1M PLN.
 
-4. **BOSSA — uproszczenie FX.** Zakładamy, że kapitał już rezyduje na subkoncie walutowym (USD). W praktyce pierwsza wpłata w PLN wymaga jednorazowego przewalutowania (3 darmowe konwersje/rok w BOSSA).
+4. **BOSSA — FX na wpłatach.** Model uwzględnia koszt przewalutowania na wpłatach (0.1% deposit_fx_cost). Przy rotacjach środki pozostają na subkoncie walutowym (USD), więc koszt FX nie występuje.
 
 5. **IB01.L ma dane tylko od 2019-02.** Strategia bazowa (U5) efektywnie operuje od ~2020-03 (po 13-miesięcznym lookbacku momentum). Wcześniejsze miesiące korzystają z CBU0.L jako jedynego safe asset.
 

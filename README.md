@@ -17,8 +17,8 @@ Problem w tym, ze czysta teoria nie uwzglednia **realnych kosztow**: przewalutow
 | Pytanie | Odpowiedz | Dowod |
 |---------|-----------|-------|
 | Broker | **BOSSA IKE (promo)** | 62k vs XTB 46k vs mBank 58k (z 9k startu) |
-| Deadband | **6.8%** | IS optimum 6.8% (Sharpe), OOS walk-forward srednia 3.0% |
-| Wiecej ETF-ow | **Nie** | U5 (Sharpe 1.13) >> U7 (0.85) >> U9 (0.79) |
+| Deadband | **4.8%** (blend IS + OOS) | IS=6.8%, OOS avg=3.0%, blend=(6.8+3.0)/2→4.8% |
+| Wiecej ETF-ow | **Nie** | U5 (Sharpe 1.05) >> U7 (0.95) >> U9 (0.87) |
 | mBank vs BOSSA | **BOSSA lepsza** | 0% FX (subkonta) > 0.2% FX mBank; ale mBank 0% prowizji na stale |
 | Rachunek opodatkowany | **Katastrofa** | ~31k vs ~62k IKE (podatek Belki niszczy strategie rotacyjna) |
 
@@ -42,7 +42,7 @@ Co miesiac:
        → kup najlepsza obligacje (IB01 lub CBU0)        [risk-off]
      W przeciwnym razie:
        → kup najlepszy ryzykowny ETF                     [risk-on]
-  4. Rotuj TYLKO jesli roznica momentum > deadband (6.8%)
+  4. Rotuj TYLKO jesli roznica momentum > deadband (4.8%)
      WYJĄTEK: zmiana rezimu (risk-on ↔ risk-off) -- rotuj bezwarunkowo
 ```
 
@@ -93,7 +93,7 @@ Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance 
 | 1 | Pobiera dane, waliduje pokrycie | `data_coverage.csv` |
 | 2 | Baseline GEM (5 ETF, deadband=0) na 5 brokerach | Krzywe kapitalowe, trade logi |
 | 3 | Sweep 41 wartosci deadbandu (0-8%) per broker | Heatmapy CAGR/Sharpe vs deadband |
-| 4 | Kalibracja statyczna + dynamiczna (zmiennosciowa) | Optymalny deadband per broker |
+| 4 | Kalibracja IS (najtanszy IKE) + blend z OOS walk-forward | Optymalny deadband (jednakowy) |
 | 5 | Porownanie koszykow U5 / U7 / U9 | Czy dodawac ETF-y |
 | 6 | Walk-forward (11 foldow OOS), timing luck, czulosc FX | Walidacja odpornosci |
 | 7 | Scenariusze z wplatami, crossover XTB/BOSSA/mBank | `decision_memo.md` |
@@ -113,8 +113,9 @@ Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance 
 
 ## Testy odpornosci
 
-- **Walk-forward**: 36 mies. trening / 12 mies. test / 11 foldow. Sredni OOS return: 12.65%/rok. OOS CAGR: 11.19%.
-- **Timing luck**: CAGR od 9.1% do 16.7% w zaleznosci od dnia rebalancingu.
+- **Walk-forward**: 36 mies. trening / 12 mies. test / 11 foldow. Sredni OOS return: 14.58%/rok. OOS CAGR: 13.16%.
+- **Blend IS+OOS**: IS optimum=6.8% (overfitting risk), OOS avg=3.0%, blend=4.8% (kompromis).
+- **Timing luck**: CAGR od 9.5% do 16.9% w zaleznosci od dnia rebalancingu.
 - **Czulosc FX**: kazde 0.25 pp kosztu FX zjada ~4,000-4,500 PLN wartosci koncowej.
 - **Porownanie uniwersow**: U5 > U7 > U9 (wiecej ETF-ow = wiecej rotacji = gorsze wyniki).
 
