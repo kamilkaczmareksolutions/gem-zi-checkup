@@ -1,10 +1,10 @@
 # GEM ZI Checkup
 
-Ilosciowa analiza zmodyfikowanej strategii **Global Equity Momentum (GEM)** w kontekscie polskiego konta **IKE** -- z pelnym backtestem, kalibracją kosztow brokerskich i walidacja out-of-sample.
+Ilosciowa analiza zmodyfikowanej strategii **Global Equity Momentum (GEM)** w kontekscie polskiego konta **IKE** - z pelnym backtestem, kalibracją kosztow brokerskich i walidacja out-of-sample.
 
 ## Po co to jest
 
-Strategia GEM to algorytm rotacyjny: co miesiac wrzucasz 100% kapitalu w jeden ETF -- ten, ktory ma najsilniejszy trend (momentum). Gdy rynki spadaja, algorytm automatycznie przenosi kapital do obligacji.
+Strategia GEM to algorytm rotacyjny: co miesiac wrzucasz 100% kapitalu w jeden ETF - ten, ktory ma najsilniejszy trend (momentum). Gdy rynki spadaja, algorytm automatycznie przenosi kapital do obligacji.
 
 Problem w tym, ze czysta teoria nie uwzglednia **realnych kosztow**: przewalutowania (XTB inkasuje 0.5% na kazdej konwersji PLN/USD), brak akcji ulamkowych (BOSSA, mBank), podatek Belki, slippage. Ten projekt odpowiada na konkretne pytania:
 
