@@ -157,9 +157,9 @@ def run_gem(
                                shares=current_shares, price=sell_price,
                                cost=sell_cost, tax=tax, gain=gain))
 
-            # buy new
-            buy_capital = net_from_sell + cash + monthly_contribution
-            monthly_contribution = 0.0  # already counted
+            # buy new — capital includes any monthly contribution already added
+            buy_capital = net_from_sell + cash + capital
+            capital = 0.0
             buy_price = prices.loc[dt, target]
             buy_cost_frac = broker.buy_cost_pct(buy_capital)
             investable = buy_capital * (1.0 - buy_cost_frac)
@@ -171,7 +171,6 @@ def run_gem(
             current_shares = shares
             cash = residual
             cost_basis = shares * buy_price
-            capital = 0.0
             num_rotations += 1
 
             trades.append(dict(date=dt, action="BUY", ticker=target,

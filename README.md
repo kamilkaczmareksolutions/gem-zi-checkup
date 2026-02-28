@@ -18,9 +18,9 @@ Problem w tym, ze czysta teoria nie uwzglednia **realnych kosztow**: przewalutow
 |---------|-----------|-------|
 | Broker | **BOSSA IKE (promo)** | 62k vs XTB 46k vs mBank 58k (z 9k startu) |
 | Deadband | **4.8%** (blend IS + OOS) | IS=6.8%, OOS avg=3.0%, blend=(6.8+3.0)/2→4.8% |
-| Wiecej ETF-ow | **Nie** | U5 (Sharpe 1.05) >> U7 (0.95) >> U9 (0.87) |
+| Wiecej ETF-ow | **Nie** | U5 (Sharpe 1.19) >> U7 (0.95) >> U9 (0.87) |
 | mBank vs BOSSA | **BOSSA lepsza** | 0% FX (subkonta) > 0.2% FX mBank; ale mBank 0% prowizji na stale |
-| Rachunek opodatkowany | **Katastrofa** | ~31k vs ~62k IKE (podatek Belki niszczy strategie rotacyjna) |
+| Rachunek opodatkowany | **Katastrofa** | ~42k vs ~62k IKE (podatek Belki niszczy strategie rotacyjna) |
 
 ## Koszyk ETF (U5)
 

@@ -581,11 +581,13 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
             db_rows.append(f"| {label} | {excess:+.2%} | {maxdd:.2%} | {optimal_dbs[bk].get('sharpe', 0):.2f} |")
 
     # recommended universe
+    is_db_for_display = blend_info.get("is_optimal", 0) if blend_info else 0
     if universe_comp is not None and not universe_comp.empty:
         best_univ = universe_comp.loc[universe_comp["sharpe"].idxmax()]
         rec_universe = best_univ["universe"]
         rec_univ_detail = (f"{rec_universe} ({int(best_univ['n_etfs'])} ETF-ów): "
-                           f"Sharpe={best_univ['sharpe']:.2f}, CAGR={best_univ['cagr']:.2%}")
+                           f"Sharpe={best_univ['sharpe']:.2f}, CAGR={best_univ['cagr']:.2%} "
+                           f"(testowane przy IS deadband={is_db_for_display:.1%})")
     else:
         rec_universe = "U5"
         rec_univ_detail = "Brak danych porównawczych."
@@ -696,7 +698,7 @@ Rekomendowane: **{rec_universe}**
             values="final_value",
             aggfunc="first",
         )
-        memo += pivot.to_markdown() + "\n"
+        memo += pivot.to_markdown(floatfmt=",.0f") + "\n"
 
     memo += f"""
 ## Podsumowanie decyzji

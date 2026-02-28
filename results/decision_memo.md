@@ -54,7 +54,7 @@ na nowych danych. Uśrednienie daje kompromis odporny na overfitting.
 ## 3. Uniwersum ETF
 
 Rekomendowane: **U5**
-U5 (5 ETF-ów): Sharpe=1.19, CAGR=18.08%
+U5 (5 ETF-ów): Sharpe=1.19, CAGR=18.08% (testowane przy IS deadband=6.8%)
 
 ## 4. Walidacja Out-of-Sample
 
@@ -65,10 +65,10 @@ Wybrane deadbandy per fold: ['0.000', '0.000', '0.050', '0.050', '0.052', '0.000
 
 |   monthly_contribution |   bossa_ike_promo |   bossa_ike_standard |   mbank_ike |   taxed_account |   xtb_ike |
 |-----------------------:|------------------:|---------------------:|------------:|----------------:|----------:|
-|                      0 |           62254.3 |              56711   |     60509.9 |         43596.7 |   53051   |
-|                    500 |           95142.3 |              85022.7 |     91893.4 |         66476.8 |   80580.2 |
-|                   1000 |          128292   |             114727   |    123567   |         89356.9 |  108109   |
-|                   2000 |          193496   |             174149   |    186720   |        135117   |  163168   |
+|                      0 |            62,254 |               56,711 |      60,510 |          43,597 |    53,051 |
+|                    500 |           298,406 |              271,689 |     291,193 |         238,855 |   273,437 |
+|                   1000 |           542,726 |              502,865 |     531,056 |         434,114 |   493,823 |
+|                   2000 |         1,033,359 |              963,768 |   1,010,904 |         824,631 |   934,596 |
 
 ## Podsumowanie decyzji
 
