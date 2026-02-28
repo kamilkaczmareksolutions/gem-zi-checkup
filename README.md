@@ -42,7 +42,7 @@ Co miesiac:
        → kup najlepsza obligacje (IB01 lub CBU0)        [risk-off]
      W przeciwnym razie:
        → kup najlepszy ryzykowny ETF                     [risk-on]
-  4. Rotuj TYLKO jesli roznica momentum > deadband (4%)
+  4. Rotuj TYLKO jesli roznica momentum > deadband (6.8%)
      WYJĄTEK: zmiana rezimu (risk-on ↔ risk-off) -- rotuj bezwarunkowo
 ```
 
