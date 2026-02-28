@@ -131,13 +131,15 @@ brokers:
     cash_interest_rate: 0.0
 
 portfolio:
-  initial_capital_pln: 9000.0
-  monthly_contribution_pln: 0.0     # base scenario: no new contributions
-  contribution_scenarios:
-    - 0
+  initial_capital_pln: 0.0          # start from zero — all capital from monthly contributions
+  fitting_base_contribution_pln: 1000.0  # base monthly contribution for all fitting/calibration
+  contribution_scenarios:           # tested in etap7 (different contribution levels)
     - 500
     - 1000
     - 2000
+
+# Inflation: loaded at runtime from GUS BDL API (variable 217230, wskaźnik średnioroczny)
+# Cached locally in data_cache/cpi_annual_cache.json
 
 walk_forward:
   train_months: 36          # 3 years training (shorter for limited data)

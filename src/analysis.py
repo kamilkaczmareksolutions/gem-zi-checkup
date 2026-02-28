@@ -19,12 +19,16 @@ def sweep_deadbands(
     safe: list[str],
     initial_capital: float,
     deadbands: list[float],
+    contribution_schedule: pd.Series | None = None,
 ) -> pd.DataFrame:
     """Run GEM for a range of deadband values, return metrics table."""
     rows = []
     for db in deadbands:
-        res = run_gem(prices, broker, risky, safe, initial_capital, deadband=db)
-        m = compute_all(res.equity, label=f"db={db:.3f}")
+        res = run_gem(prices, broker, risky, safe, initial_capital, deadband=db,
+                      contribution_schedule=contribution_schedule)
+        m = compute_all(res.equity, label=f"db={db:.3f}",
+                        initial_capital=initial_capital,
+                        contribution_schedule=contribution_schedule)
         m["deadband"] = db
         m["rotations"] = res.num_rotations
         m["total_costs"] = res.total_costs
@@ -44,6 +48,7 @@ def run_gem_dynamic_deadband(
     base: float,
     k: float,
     vol_window: int = 6,
+    contribution_schedule: pd.Series | None = None,
 ) -> BacktestResult:
     """Run GEM with volatility-scaled deadband: delta = base + k * sigma(vol_window)."""
     from .momentum import compute_momentum, select_best
@@ -58,12 +63,13 @@ def run_gem_dynamic_deadband(
     start_idx = valid_idx[0]
     ts_range = prices.loc[start_idx:].index
 
-    capital = initial_capital
+    deposit_cost_init = initial_capital * broker.deposit_fx_cost
+    capital = initial_capital - deposit_cost_init
     cash = 0.0
     current_holding = None
     current_shares = 0.0
     cost_basis = 0.0
-    total_costs = 0.0
+    total_costs = deposit_cost_init
     total_taxes = 0.0
     num_rotations = 0
 
@@ -72,10 +78,18 @@ def run_gem_dynamic_deadband(
     trades = []
     holding_series = []
 
+    contrib_lookup = contribution_schedule.to_dict() if contribution_schedule is not None else None
+
     for dt in ts_range:
+        contrib = contrib_lookup[dt] if contrib_lookup and dt in contrib_lookup else 0.0
+        if contrib > 0:
+            dep_cost = contrib * broker.deposit_fx_cost
+            capital += contrib - dep_cost
+            total_costs += dep_cost
+
         if dt not in signals.index:
             if current_holding and current_holding in prices.columns:
-                pv = current_shares * prices.loc[dt, current_holding] + cash
+                pv = current_shares * prices.loc[dt, current_holding] + cash + capital
             else:
                 pv = capital + cash
             equity_vals.append(pv)
@@ -87,7 +101,7 @@ def run_gem_dynamic_deadband(
         target = sig["target"]
         if target is None or target not in prices.columns:
             if current_holding and current_holding in prices.columns:
-                pv = current_shares * prices.loc[dt, current_holding] + cash
+                pv = current_shares * prices.loc[dt, current_holding] + cash + capital
             else:
                 pv = capital + cash
             equity_vals.append(pv)
@@ -124,6 +138,17 @@ def run_gem_dynamic_deadband(
             regime_change = was_safe != going_safe
 
             if not regime_change and spread < dyn_db:
+                if capital > 0:
+                    price = prices.loc[dt, current_holding]
+                    add_cost_frac = broker.buy_cost_pct(capital)
+                    investable = capital * (1.0 - add_cost_frac)
+                    cost_paid = capital * add_cost_frac
+                    total_costs += cost_paid
+                    new_shares, new_res = broker.shares_and_residual(investable, price)
+                    current_shares += new_shares
+                    cash += new_res
+                    cost_basis += new_shares * price
+                    capital = 0.0
                 pv = current_shares * prices.loc[dt, current_holding] + cash
                 equity_vals.append(pv)
                 equity_dates.append(dt)
@@ -143,7 +168,8 @@ def run_gem_dynamic_deadband(
                                shares=current_shares, price=sp, cost=sc, tax=tax))
 
             bp = prices.loc[dt, target]
-            buy_cap = net + cash
+            buy_cap = net + cash + capital
+            capital = 0.0
             bcf = broker.buy_cost_pct(buy_cap)
             investable = buy_cap * (1 - bcf)
             bc = buy_cap * bcf
@@ -156,6 +182,19 @@ def run_gem_dynamic_deadband(
             num_rotations += 1
             trades.append(dict(date=dt, action="BUY", ticker=target,
                                shares=shares, price=bp, cost=bc))
+        else:
+            # same holding — invest any accumulated capital
+            if capital > 0:
+                price = prices.loc[dt, current_holding]
+                add_cost_frac = broker.buy_cost_pct(capital)
+                investable = capital * (1.0 - add_cost_frac)
+                cost_paid = capital * add_cost_frac
+                total_costs += cost_paid
+                new_shares, new_res = broker.shares_and_residual(investable, price)
+                current_shares += new_shares
+                cash += new_res
+                cost_basis += new_shares * price
+                capital = 0.0
 
         if current_holding and current_holding in prices.columns:
             pv = current_shares * prices.loc[dt, current_holding] + cash
@@ -183,6 +222,7 @@ def compare_universes(
     universes: dict[str, dict],
     initial_capital: float,
     deadband: float = 0.03,
+    contribution_schedule: pd.Series | None = None,
 ) -> pd.DataFrame:
     """Compare universes. Each runs over its own available data window.
 
@@ -197,8 +237,11 @@ def compare_universes(
         safe = [t for t in univ["safe"] if t in prices.columns]
         if not risky or not safe:
             continue
-        res = run_gem(prices, broker, risky, safe, initial_capital, deadband=deadband)
-        m = compute_all(res.equity, label=name)
+        res = run_gem(prices, broker, risky, safe, initial_capital, deadband=deadband,
+                      contribution_schedule=contribution_schedule)
+        m = compute_all(res.equity, label=name,
+                        initial_capital=initial_capital,
+                        contribution_schedule=contribution_schedule)
         m["universe"] = name
         m["n_etfs"] = len(risky) + len(safe)
         m["rotations"] = res.num_rotations
@@ -208,28 +251,8 @@ def compare_universes(
         rows.append(m)
         equity_curves[name] = res.equity
 
-    # also compare over common window
-    if len(equity_curves) > 1:
-        common_start = max(eq.index[0] for eq in equity_curves.values())
-        for name, eq in equity_curves.items():
-            trimmed = eq.loc[common_start:]
-            if len(trimmed) < 3:
-                continue
-            # re-normalize to initial capital at common start
-            trimmed = trimmed / trimmed.iloc[0] * initial_capital
-            m = compute_all(trimmed, label=f"{name}_common")
-            m["universe"] = f"{name}_common"
-            m["n_etfs"] = rows[[r["universe"] for r in rows].index(name)]["n_etfs"] if name in [r["universe"] for r in rows] else 0
-            m["start_date"] = str(common_start.date())
-            m["end_date"] = str(trimmed.index[-1].date())
-            # find matching row for n_etfs
-            for r in rows:
-                if r["universe"] == name:
-                    m["n_etfs"] = r["n_etfs"]
-                    m["rotations"] = r["rotations"]
-                    m["total_costs"] = r["total_costs"]
-                    break
-            rows.append(m)
+    # Common-window comparison skipped when using DCA — trimming an equity curve
+    # with external cashflows and re-computing metrics would be misleading.
 
     return pd.DataFrame(rows)
 
@@ -246,6 +269,7 @@ def walk_forward(
     train_months: int = 60,
     test_months: int = 12,
     step_months: int = 12,
+    contribution_schedule: pd.Series | None = None,
 ) -> dict:
     """Rolling-window walk-forward: select best deadband on train, evaluate on test.
 
@@ -282,7 +306,8 @@ def walk_forward(
         for db in deadbands:
             try:
                 res = run_gem(train_prices, broker, risky, safe,
-                              initial_capital, deadband=db)
+                              initial_capital, deadband=db,
+                              contribution_schedule=contribution_schedule)
                 if len(res.equity) < 3:
                     continue
                 s = calc_sharpe(res.equity)
@@ -295,7 +320,8 @@ def walk_forward(
         # evaluate on full window (train+test) with selected deadband
         try:
             full_res = run_gem(full_prices, broker, risky, safe,
-                               initial_capital, deadband=best_db)
+                               initial_capital, deadband=best_db,
+                               contribution_schedule=contribution_schedule)
             # extract only the OOS (test) portion by date
             test_equity = full_res.equity.loc[test_start_date:test_end_date]
             if len(test_equity) > 1 and test_equity.iloc[0] > 0:
@@ -321,8 +347,10 @@ def walk_forward(
     # previous one ended
     if oos_equities:
         parts = []
-        running_value = initial_capital
+        running_value = oos_equities[0].iloc[0] if len(oos_equities[0]) > 0 else 1.0
         for eq in oos_equities:
+            if len(eq) < 2:
+                continue
             rets = eq.pct_change().fillna(0)
             scaled = pd.Series(index=eq.index, dtype=float)
             val = running_value
@@ -334,8 +362,9 @@ def walk_forward(
                 scaled[dt] = val
             running_value = val
             parts.append(scaled)
-        stitched = pd.concat(parts)
-        stitched = stitched[~stitched.index.duplicated(keep="last")]
+        stitched = pd.concat(parts) if parts else pd.Series(dtype=float)
+        if not stitched.empty:
+            stitched = stitched[~stitched.index.duplicated(keep="last")]
     else:
         stitched = pd.Series(dtype=float)
 
@@ -356,11 +385,16 @@ def timing_luck_test(
     initial_capital: float,
     deadband: float,
     offsets: list[int],
+    contribution_schedule: pd.Series | None = None,
+    inflation_rates: dict[int, float] | None = None,
+    base_contribution: float = 0.0,
 ) -> pd.DataFrame:
     """Test sensitivity to rebalancing day within each month.
 
     *offsets*: list of business-day offsets from month start (0 = first day).
     We resample daily prices to the Nth business day of each month.
+    When contribution_schedule is provided, a new schedule is built for
+    the resampled dates using the same base amount and inflation rates.
     """
     rows = []
     for offset in offsets:
@@ -368,8 +402,16 @@ def timing_luck_test(
             monthly = _resample_nth_bday(daily_prices, offset)
             if monthly.empty or len(monthly) < 15:
                 continue
-            res = run_gem(monthly, broker, risky, safe, initial_capital, deadband=deadband)
-            m = compute_all(res.equity, label=f"day_offset={offset}")
+            # Rebuild contribution schedule for resampled dates
+            sched = None
+            if base_contribution > 0 and inflation_rates:
+                from run_all import build_contribution_schedule
+                sched = build_contribution_schedule(base_contribution, monthly.index, inflation_rates)
+            res = run_gem(monthly, broker, risky, safe, initial_capital, deadband=deadband,
+                          contribution_schedule=sched)
+            m = compute_all(res.equity, label=f"day_offset={offset}",
+                            initial_capital=initial_capital,
+                            contribution_schedule=sched)
             m["offset"] = offset
             m["rotations"] = res.num_rotations
             rows.append(m)

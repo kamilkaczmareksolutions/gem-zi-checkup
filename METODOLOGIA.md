@@ -50,7 +50,7 @@ Gdzie:
 - `Price(e_i, t-1)` = adjusted close sprzed 1 miesiąca (shift o 1 wiersz w dół)
 - `Price(e_i, t-13)` = adjusted close sprzed 13 miesięcy (shift o 13 wierszy)
 
-**Ważne:** numerator to cena sprzed 1 miesiąca, nie cena bieżąca. To tzw. "skip-month" — pomija ostatni miesiąc, by uniknąć efektu krótkoterminowego odwrócenia (short-term reversal). Mierzona jest pełna 12-miesięczna stopa zwrotu z okresu od t-13 do t-1.
+**Ważne:** numerator to cena sprzed 1 miesiąca, nie cena bieżąca. To tzw. "skip-month" — pomija ostatni miesiąc, by uniknąć efektu krótkoterminowego odwrócenia (short-term reversal). Mierzona jest więc stopa zwrotu z pełnych 12 miesięcy: od t-13 do t-1.
 
 Implementacja (dosłownie z kodu):
 ```python
@@ -93,19 +93,19 @@ else:
 W każdym miesiącu, po wyznaczeniu celu (`target`), algorytm sprawdza warunki rotacji:
 
 ```
-JEśli target == current_holding:
+Jeśli target == current_holding:
     → nie rób nic
 
-JEśli target != current_holding:
+Jeśli target != current_holding:
     oblicz spread = Momentum(target) - Momentum(current_holding)
     
-    JEśli zmiana reżimu (risk-on ↔ risk-off):
+    Jeśli zmiana reżimu (risk-on ↔ risk-off):
         → rotuj BEZWARUNKOWO (deadband nie blokuje)
     
-    JEśli ten sam reżim (np. risky→risky albo safe→safe):
-        JEśli spread >= deadband:
+    Jeśli ten sam reżim (np. risky→risky albo safe→safe):
+        Jeśli spread >= deadband:
             → rotuj
-        JEśli spread < deadband:
+        Jeśli spread < deadband:
             → nie rób nic (zostań w obecnym ETF)
 ```
 
@@ -122,22 +122,15 @@ if not regime_change and spread < deadband:
     continue
 ```
 
-### Testowane warianty deadbandu
-
-**Statyczny:** siatka od 0.0% do 8.0% co 0.2 pp (41 punktów).
-
-**Dynamiczny:** `delta = base + k * sigma_avg(6m)`, gdzie:
-- `base` = 2.0%
-- `k` ∈ {0.05, 0.10, 0.15, 0.20}
-- `sigma_avg(6m)` = średnie 6-miesięczne odchylenie standardowe miesięcznych stóp zwrotu, uśrednione po wszystkich ETF-ach w koszyku
-
 ### Wybór optymalnego deadbandu — blend IS + OOS
+
+**Kluczowa zasada:** kalibracja deadbandu (IS sweep, walk-forward OOS, blend) odbywa się na **identycznym scenariuszu** jak produkcyjna symulacja: `initial_capital=0`, regularne wpłaty z CPI rewaloryzacją (`fitting_base_contribution_pln` z konfiga, domyślnie 1000 PLN/mies). Benchmark (IWDA.L) jest również porównywany w trybie DCA z tym samym harmonogramem wpłat (bez kosztów).
 
 Finalny deadband jest wyznaczany trójstopniowo, by uniknąć overfittingu do danych historycznych:
 
-1. **Broker referencyjny** — automatycznie wyznaczany jako najtańszy IKE (najwyższa wartość końcowa w baseline). MaxDD strategii jest oceniany na tym brokerze, ponieważ najniższe tarcia kosztowe dają najczystszy obraz "prawdziwego" MaxDD strategii.
+1. **Broker referencyjny** — automatycznie wyznaczany jako najtańszy IKE (najwyższa wartość końcowa w baseline DCA). MaxDD strategii jest oceniany na tym brokerze, ponieważ najniższe tarcia kosztowe dają najczystszy obraz "prawdziwego" MaxDD strategii.
 
-2. **IS optymalny** (in-sample) — z siatki deadbandów wybierany jest ten, którego MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku (IWDA.L, pasywny buy-and-hold), a jednocześnie daje najwyższy excess CAGR nad benchmarkiem.
+2. **IS optymalny** (in-sample) — z siatki deadbandów wybierany jest ten, którego MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku DCA (IWDA.L), a jednocześnie daje najwyższy excess XIRR nad benchmarkiem DCA.
 
 3. **Blend z OOS** — walk-forward generuje per fold najlepszy deadband (po Sharpe). Średnia OOS deadbandów (`oos_avg`) jest uśredniana z IS optimum:
 
@@ -149,6 +142,15 @@ blended = (IS_optimum + OOS_average) / 2
 Motywacja: sam IS optimum jest podatny na overfitting (np. 6.8% na danych historycznych). OOS średnia (np. 3.0%) pokazuje, co walk-forward faktycznie wybiera na nowych danych. Uśrednienie daje kompromis odporny na overfitting.
 
 **Jeden deadband dla wszystkich brokerów** — strategia momentum jest niezależna od brokera; broker wpływa tylko na koszty, nie na sygnał. Dlatego finalny blended deadband jest stosowany jednolicie.
+
+### Testowane warianty deadbandu
+
+**Statyczny:** siatka od 0.0% do 8.0% co 0.2 pp (41 punktów).
+
+**Dynamiczny:** `delta = base + k * sigma_avg(6m)`, gdzie:
+- `base` = 2.0%
+- `k` ∈ {0.05, 0.10, 0.15, 0.20}
+- `sigma_avg(6m)` = średnie 6-miesięczne odchylenie standardowe miesięcznych stóp zwrotu, uśrednione po wszystkich ETF-ach w koszyku
 
 ---
 
@@ -168,12 +170,19 @@ Gdzie `commission_frac = max(trade_value * commission_pct, commission_min_pln) /
 
 Dla pełnej rotacji (sprzedaj stary + kup nowy) koszt jest naliczany **dwukrotnie** — osobno na sprzedaży, osobno na kupnie.
 
-### 4.2 Profile brokerów
+### 4.2 Koszt wpłaty (deposit FX)
+
+Odrębny jednorazowy koszt przewalutowania PLN→waluta ETF-a przy **każdej wpłacie**:
+- `deposit_fx_cost` jest odliczany od każdej miesięcznej wpłaty, zanim kapitał trafi do portfela.
+- Rotacje (sprzedaż→kupno) **nie ponoszą** tego kosztu, jeśli broker ma subkonta walutowe (BOSSA) lub rachunek operuje w USD (opodatkowany).
+- mBank nie ma subkont walutowych, więc każda rotacja wiąże się z FX via `fx_cost_per_leg`.
+
+### 4.3 Profile brokerów
 
 | Parametr | XTB IKE | BOSSA promo | BOSSA standard | mBank IKE | Opodatkowany |
 |----------|--------:|------------:|---------------:|----------:|-------------:|
 | FX per leg (rotacja) | 0.50% | 0.00% | 0.00% | 0.10% | 0.00% |
-| FX na wpłatach | — | 0.10% | 0.10% | — | 0.20% |
+| Deposit FX (wpłata) | 0.00% | 0.10% | 0.10% | 0.00% | 0.20% |
 | Prowizja | 0.00% | 0.00% | 0.29% (min 14 PLN) | 0.00% | 0.00% |
 | Slippage | 0.10% | 0.10% | 0.10% | 0.10% | 0.10% |
 | Frakcje | TAK | NIE | NIE | NIE | TAK |
@@ -181,15 +190,19 @@ Dla pełnej rotacji (sprzedaj stary + kup nowy) koszt jest naliczany **dwukrotni
 | Subkonta walut. | — | TAK | TAK | NIE | TAK (Walutomat) |
 | **Koszt round-trip** | **~1.2%** | **~0.2%** | **~0.78%+** | **~0.4%** | **~0.2% + podatek** |
 
-**Uwaga o koncie opodatkowanym:** Model zakłada, że inwestor korzysta z Walutomatu, Revolut lub kantoru internetowego do konwersji PLN→USD przy wpłatach (koszt ~0.2%). Rotacje odbywają się w ramach jednej waluty (USD→USD), więc nie generują kosztu FX. Jedynym dodatkowym obciążeniem jest 19% podatek Belki od każdego zrealizowanego zysku.
+**Uwaga o XTB IKE:** XTB ma wbudowane 0.5% FX per leg, które jest naliczane przy każdej transakcji (spread walutowy), ale nie ma osobnego kosztu wpłaty — PLN→USD odbywa się automatycznie jako część zlecenia.
 
-**Uwaga o mBank:** mBank (eMakler) oferuje 0% prowizji na ETF jako stały element oferty (nie promocja). Koszt FX wynosi 0.1% per leg. Kluczowa różnica vs BOSSA: mBank nie posiada subkont walutowych, więc przy rotacji środki wracają do PLN (sprzedaż), a następnie konwertowane są ponownie na walutę nowego ETF-a (zakup). Łączny koszt FX na rotację: 2 × 0.1% = 0.2%. BOSSA z subkontami walutowymi unika tego kosztu przy rotacjach w ramach jednej waluty.
+**Uwaga o BOSSA IKE:** BOSSA oferuje subkonta walutowe. Rotacje w ramach tej samej waluty (np. sprzedaż ETF-a USD i kupno innego za USD) nie wiążą się z przewalutowaniem. Koszt FX występuje tylko przy wpłacie PLN→USD. Promocja (0% prowizja) ważna do końca 2026.
 
-### 4.3 Akcje ułamkowe vs pełne jednostki
+**Uwaga o mBank IKE:** mBank (eMakler) oferuje 0% prowizji na ETF jako stały element oferty (nie promocja). Koszt FX wynosi 0.1% per leg. Kluczowa różnica vs BOSSA: mBank nie posiada subkont walutowych, więc przy rotacji środki wracają do PLN (sprzedaż), a następnie konwertowane są ponownie na walutę nowego ETF-a (zakup). Łączny koszt FX na rotację: 2 × 0.1% = 0.2%. BOSSA z subkontami walutowymi unika tego kosztu przy rotacjach w ramach jednej waluty.
 
-**XTB (frakcje = ON):** `shares = capital / price`, `residual = 0`. Cały kapitał jest zainwestowany.
+**Uwaga o rachunku opodatkowanym:** rotacje w USD nie wiążą się z FX (broker z subkontami walutowymi lub XTB). Deposit FX = 0.2% to koszt walutomatu/Revolut przy wpłacie PLN→USD.
 
-**BOSSA (frakcje = OFF):** `shares = floor(capital / price)`, `residual = capital - shares * price`. Reszta leży jako "cash drag" — niepracująca gotówka.
+### 4.4 Akcje ułamkowe vs pełne jednostki
+
+**XTB / rachunek opodatkowany (frakcje = ON):** `shares = capital / price`, `residual = 0`. Cały kapitał jest zainwestowany.
+
+**BOSSA / mBank (frakcje = OFF):** `shares = floor(capital / price)`, `residual = capital - shares * price`. Reszta leży jako "cash drag" — niepracująca gotówka.
 
 Implementacja:
 ```python
@@ -200,9 +213,9 @@ residual = capital - n * price_per_share
 return float(n), residual
 ```
 
-### 4.4 Podatek Belki
+### 4.5 Podatek Belki
 
-Na rachunku opodatkowanym: przy każdej sprzedaży obliczany jest zysk (`sell_proceeds - cost_basis`). Jeśli zysk > 0, potrącane jest 19%. Cost basis to cena zakupu * liczba akcji.
+Na rachunku opodatkowanym: przy każdej sprzedaży obliczany jest zysk (`sell_proceeds - cost_basis`). Jeśli zysk > 0, potrącane jest 19%. Cost basis to cena zakupu × liczba akcji.
 
 ```python
 gain = sell_proceeds_gross - cost_basis
@@ -214,37 +227,60 @@ net_from_sell = sell_proceeds_gross - sell_cost - tax
 
 ## 5. Przebieg symulacji (pętla główna)
 
+**Kapitał startowy = 0 PLN.** Cały kapitał pochodzi z regularnych wpłat miesięcznych (rewaloryzowanych o CPI). Nie ma lump sum.
+
 Dla każdego miesiąca `t` w zakresie danych:
 
-1. Dodaj ewentualną wpłatę miesięczną do kapitału.
+1. Dodaj wpłatę miesięczną do kapitału (po odliczeniu `deposit_fx_cost`). Przed pierwszym sygnałem momentum (lookback 13 mies.) wpłaty kumulują się jako gotówka.
 2. Oblicz momentum dla wszystkich ETF-ów.
 3. Wyznacz cel algorytmu (`target`) wg sekcji 2.
-4. **Pierwszy miesiąc** (brak holdingu): kup `target`, odlicz koszty kupna, zapisz shares/cash.
-5. **Target == obecny holding**: nie rób nic.
-6. **Target != obecny holding**: sprawdź deadband (sekcja 3).
-   - Jeśli rotacja dozwolona:
-     a. Sprzedaj obecny ETF → odlicz koszt sprzedaży → odlicz podatek (jeśli jest) → otrzymaj `net_from_sell`.
-     b. Kup nowy ETF za `net_from_sell + cash` → odlicz koszt kupna → oblicz shares i residual.
-     c. Zapisz jako rotację.
-   - Jeśli deadband blokuje: nie rób nic.
-7. Zapisz wartość portfela = `shares * current_price + cash`.
+4. **Pierwszy miesiąc z sygnałem** (brak holdingu): kup `target` za cały skumulowany kapitał, odlicz koszty kupna, zapisz shares/cash.
+5. **Target == obecny holding** lub **deadband blokuje rotację**: zainwestuj wszelki pending capital w obecny ETF (dokupienie).
+6. **Target != obecny holding** i deadband nie blokuje: wykonaj rotację.
+   - Sprzedaj obecny ETF → odlicz koszt sprzedaży → odlicz podatek (jeśli jest) → otrzymaj `net_from_sell`.
+   - Kup nowy ETF za `net_from_sell + cash + capital` → odlicz koszt kupna → oblicz shares i residual.
+   - Zapisz jako rotację.
+7. Zapisz wartość portfela = `shares * current_price + cash + capital` (capital > 0 tylko gdy brak sygnału).
 
 Wartość portfela jest zapisywana co miesiąc. To tworzy krzywą equity.
+
+**Identyczny scenariusz** (start=0, DCA z CPI) jest używany we wszystkich etapach: baseline, sweep deadbandów, kalibracja IS+OOS, walk-forward, timing luck, benchmark, czułość kosztów. Nie ma rozbieżności między scenariuszem fitowania a scenariuszem produkcyjnym.
 
 ---
 
 ## 6. Metryki wynikowe
 
-| Metryka | Wzór |
-|---------|------|
-| Total Return | `equity[-1] / equity[0] - 1` |
-| CAGR | `(equity[-1] / equity[0])^(1/years) - 1`, years = dni/365.25 |
+### Główna metryka zwrotu: XIRR (money-weighted)
+
+Przy strategii DCA (regularne wpłaty, start od zera) klasyczny CAGR (`equity[-1]/equity[0]`) jest **bezsensowny** — mała początkowa equity zawyża wynik do absurdalnych 50–60%. Zamiast tego stosujemy **XIRR** (Extended Internal Rate of Return):
+
+```
+NPV(r) = Σ CF_i / (1 + r)^(t_i / 365.25) = 0
+```
+
+Gdzie:
+- `CF_i < 0` = wpłaty inwestora (initial_capital + contribution_schedule)
+- `CF_n > 0` = wartość końcowa portfela (terminal value)
+- `t_i` = liczba dni od pierwszej wpłaty
+- `r` = szukana roczna stopa zwrotu (XIRR)
+
+Solver: `scipy.optimize.brentq` z bracketingiem [-50%, 1000%].
+
+| Metryka | Wzór / opis |
+|---------|-------------|
+| **XIRR** | Annualizowana money-weighted stopa zwrotu (solver NPV=0) |
 | Sharpe | `mean(excess_returns) / std(excess_returns) * sqrt(12)`, rf=0 |
 | Sortino | `mean(excess_returns) / downside_std * sqrt(12)` |
 | Max Drawdown | `min((equity - cummax) / cummax)` |
-| Calmar | `CAGR / |max_drawdown|` |
+| Calmar | `XIRR / |max_drawdown|` |
 
-Wszystkie metryki liczone na miesięcznych stopach zwrotu krzywej equity. Sharpe i Sortino annualizowane mnożnikiem `sqrt(12)`. Risk-free rate = 0 (uproszczenie).
+Sharpe i Sortino liczone na miesięcznych stopach zwrotu krzywej equity (pct_change). Risk-free rate = 0.
+
+### Benchmark
+
+Benchmark = `IWDA.L` (iShares MSCI World), buy-and-hold DCA z tym samym harmonogramem wpłat co strategia GEM (bez kosztów transakcyjnych). Używany do:
+- Obliczenia excess XIRR (XIRR strategii - XIRR benchmarku DCA)
+- Ograniczenia MaxDD przy selekcji optymalnego deadbandu (MaxDD strategii ≤ MaxDD benchmarku DCA)
 
 ---
 
@@ -252,18 +288,18 @@ Wszystkie metryki liczone na miesięcznych stopach zwrotu krzywej equity. Sharpe
 
 ### 7.1 Walk-forward (walidacja out-of-sample)
 
-Procedura:
+Procedura (z DCA — ten sam harmonogram wpłat co reszta pipeline'u):
 1. Weź okno treningowe = 36 miesięcy (od pozycji `start`).
-2. Dla każdego deadbandu z siatki: uruchom backtest na oknie treningowym, policz Sharpe.
+2. Dla każdego deadbandu z siatki: uruchom backtest DCA na oknie treningowym, policz Sharpe.
 3. Wybierz deadband z najwyższym Sharpe na treningu.
-4. Uruchom backtest na oknie treningowym + 12 miesięcy testowych. Wytnij equity za okres testowy (OOS).
+4. Uruchom backtest DCA na oknie treningowym + 12 miesięcy testowych. Wytnij equity za okres testowy (OOS).
 5. Przesuń `start` o 12 miesięcy. Powtórz.
 
-Wynik: 11 foldów. Dla każdego folda znamy:
+Wynik: seria foldów. Dla każdego folda znamy:
 - jaki deadband został wybrany na treningu,
 - jaki return uzyskano OOS (na danych, których algorytm "nie widział" przy wyborze parametru).
 
-Stitching OOS equity: stopy zwrotu z kolejnych foldów są łączone łańcuchowo (wartość końcowa folda N = wartość startowa folda N+1).
+Stitching OOS equity: stopy zwrotu z kolejnych foldów są łączone łańcuchowo (wartość startowa = wartość equity z pierwszego folda OOS).
 
 ### 7.2 Timing luck
 
@@ -289,23 +325,37 @@ Trzy warianty koszyka:
 
 Każdy wariant testowany identycznie (ten sam deadband, ten sam broker, ten sam backtest).
 
-Dodatkowe porównanie "common window": obcięcie krzywych equity do wspólnej daty startowej i renormalizacja do kapitału początkowego, by CAGR był porównywalny pomimo różnych dat startu poszczególnych ETF-ów.
+Porównanie uniwersów odbywa się na pełnej długości każdego z nich (dłuższe uniwersa mają więcej danych). Porównanie "common window" jest pominięte w trybie DCA, ponieważ obcięcie krzywej equity do wspólnej daty i oderwanie od harmonogramu wpłat prowadzi do błędnych metryk.
 
 ---
 
 ## 9. Analiza progu przejścia XTB → BOSSA / mBank
 
-Dla kapitału początkowego ∈ {5k, 10k, 15k, ..., 200k} PLN:
-- uruchom backtest na XTB IKE, BOSSA IKE (promo) i mBank IKE z optymalnymi deadbandami,
-- porównaj wartości końcowe.
+Analiza crossover: dla hipotetycznego kapitału jednorazowego ∈ {5k, 10k, 15k, ..., 200k} PLN (lump sum, bez wpłat) porównujemy wartości końcowe między brokerami. Szukany "crossover": najniższy kapitał, od którego BOSSA/mBank daje wyższą wartość końcową niż XTB.
 
-Szukany "crossover": najniższy kapitał, od którego dany broker daje wyższą wartość końcową niż XTB.
+**Uwaga:** ta analiza celowo używa lump sum (nie DCA), bo odpowiada na pytanie "jaki jest minimalny kapitał, przy którym cash drag z braku frakcji nie dominuje?" — niezależnie od tego, jak ten kapitał się tam znalazł.
 
 ---
 
-## 10. Scenariusze z wpłatami
+## 10. Scenariusze z wpłatami (Etap 7)
 
-Wpłata miesięczna ∈ {0, 500, 1000, 2000} PLN. Kapitał jest dodawany na początku każdego miesiąca. Jeśli w danym miesiącu następuje rotacja, nowa wpłata jest włączana w kwotę zakupu nowego ETF-a. Jeśli nie ma rotacji i holding się nie zmienia, wpłata jest dodawana do istniejącej pozycji (dokupienie akcji bieżącego ETF-a z uwzględnieniem kosztów kupna).
+Etap 7 testuje wrażliwość wyniku na kwotę bazowej wpłaty miesięcznej: 500, 1000, 2000 PLN. Kapitał startowy = 0 PLN (tożsamy z resztą pipeline'u).
+
+### Rewaloryzacja o inflację CPI
+
+Na początku każdego roku kalendarzowego wpłata jest rewaloryzowana o wskaźnik średniorocznej inflacji CPI (GUS) za rok poprzedni:
+
+```
+wpłata(rok Y) = wpłata(rok Y-1) × (1 + CPI_średnioroczny(Y-1))
+```
+
+Dane CPI pobierane są z **GUS BDL API** (zmienna 217230, wskaźnik średnioroczny) i cache'owane lokalnie w `data_cache/cpi_annual_cache.json`. Dla lat jeszcze nieopublikowanych w API (np. bieżący rok) stosowane jest carry-forward ostatniej znanej wartości.
+
+Klucz API przechowywany jest w pliku `.env` (nieśledzony przez git). Szablon: `.env.local`.
+
+### Przebieg
+
+Wpłata (po rewaloryzacji) jest dodawana na początku każdego miesiąca. Jeśli w danym miesiącu następuje rotacja, wpłata jest włączana w kwotę zakupu nowego ETF-a. Jeśli nie ma rotacji i holding się nie zmienia, wpłata jest dodawana do istniejącej pozycji (dokupienie akcji bieżącego ETF-a z uwzględnieniem kosztów kupna i deposit FX).
 
 ---
 
@@ -315,13 +365,11 @@ Wpłata miesięczna ∈ {0, 500, 1000, 2000} PLN. Kapitał jest dodawany na pocz
 
 2. **Cena wykonania = adjusted close na koniec miesiąca.** W rzeczywistości zlecenie byłoby wykonane po cenie z dnia złożenia, która może się różnić.
 
-3. **Brak modelowania wpływu na rynek** (market impact). Uzasadnione małym portfelem (9k PLN), ale mogłoby mieć znaczenie przy >1M PLN.
+3. **Brak modelowania wpływu na rynek** (market impact). Uzasadnione małym portfelem, ale mogłoby mieć znaczenie przy >1M PLN.
 
-4. **BOSSA — FX na wpłatach.** Model uwzględnia koszt przewalutowania na wpłatach (0.1% deposit_fx_cost). Przy rotacjach środki pozostają na subkoncie walutowym (USD), więc koszt FX nie występuje.
+4. **IB01.L ma dane tylko od 2019-02.** Strategia bazowa (U5) efektywnie operuje od ~2020-03 (po 13-miesięcznym lookbacku momentum). Wcześniejsze miesiące korzystają z CBU0.L jako jedynego safe asset.
 
-5. **IB01.L ma dane tylko od 2019-02.** Strategia bazowa (U5) efektywnie operuje od ~2020-03 (po 13-miesięcznym lookbacku momentum). Wcześniejsze miesiące korzystają z CBU0.L jako jedynego safe asset.
-
-6. **Walk-forward z krótkim oknem treningowym (36 mies.).** Wynika z ograniczenia danych IB01.L. Idealnie powinno być 60+ miesięcy, ale wtedy zostałoby za mało foldów.
+5. **Walk-forward z krótkim oknem treningowym (36 mies.).** Wynika z ograniczenia danych IB01.L. Idealnie powinno być 60+ miesięcy, ale wtedy zostałoby za mało foldów.
 
 ---
 
@@ -329,20 +377,22 @@ Wpłata miesięczna ∈ {0, 500, 1000, 2000} PLN. Kapitał jest dodawany na pocz
 
 ```
 GEMv2/
-├── spec_inputs.yaml          ← konfiguracja parametrów
-├── assumptions.md            ← jawne założenia
-├── METODOLOGIA.md            ← ten dokument
-├── run_all.py                ← główny runner (uruchom: python run_all.py)
+├── .env.local                   ← szablon zmiennych środowiskowych
+├── .env                         ← klucz API GUS (nie w repozytorium, w .gitignore)
+├── spec_inputs.yaml             ← konfiguracja parametrów
+├── assumptions.md               ← jawne założenia
+├── METODOLOGIA.md               ← ten dokument
+├── run_all.py                   ← główny runner (uruchom: python -m run_all)
 ├── src/
-│   ├── config.py             ← ładowanie YAML
-│   ├── data.py               ← pobieranie i czyszczenie danych (yfinance)
-│   ├── momentum.py           ← obliczanie momentum 13-1 + selekcja celu
-│   ├── broker.py             ← modele kosztowe brokerów (XTB, BOSSA, mBank, opodatkowany)
-│   ├── backtest.py           ← główna pętla symulacji
-│   ├── metrics.py            ← CAGR, Sharpe, Sortino, MaxDD, Calmar
-│   └── analysis.py           ← sweep deadbandów, walk-forward, timing luck
-├── results/                  ← wyniki (wykresy PNG, tabele CSV, decision_memo.md)
-└── data_cache/               ← cache pobranych cen (CSV)
+│   ├── config.py                ← ładowanie YAML
+│   ├── data.py                  ← pobieranie cen (yfinance) + CPI (GUS BDL API)
+│   ├── momentum.py              ← obliczanie momentum 13-1 + selekcja celu
+│   ├── broker.py                ← modele kosztowe brokerów
+│   ├── backtest.py              ← główna pętla symulacji
+│   ├── metrics.py               ← XIRR, Sharpe, Sortino, MaxDD, Calmar
+│   └── analysis.py              ← sweep deadbandów, walk-forward, timing luck
+├── results/                     ← wyniki (wykresy PNG, tabele CSV, decision_memo.md)
+└── data_cache/                  ← cache pobranych cen (CSV) + cache CPI (JSON)
 ```
 
-Aby powtórzyć analizę: `pip install -r requirements.txt && python run_all.py`.
+Aby powtórzyć analizę: `pip install -r requirements.txt && python -m run_all`.

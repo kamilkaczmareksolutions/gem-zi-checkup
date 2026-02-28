@@ -25,10 +25,10 @@ import numpy as np
 import pandas as pd
 
 from src.config import load_config, all_tickers, ROOT
-from src.data import fetch_prices, validate_prices, common_window
+from src.data import fetch_prices, validate_prices, common_window, load_cpi_annual
 from src.broker import make_broker, BrokerModel
 from src.backtest import run_gem
-from src.metrics import compute_all, cagr, sharpe, max_drawdown
+from src.metrics import compute_all, xirr, sharpe, max_drawdown, build_cashflows
 from src.analysis import (
     sweep_deadbands,
     run_gem_dynamic_deadband,
@@ -58,16 +58,63 @@ def print_header(text: str):
     print(f"\n{bar}\n  {text}\n{bar}")
 
 
+def build_contribution_schedule(
+    base_amount: float,
+    dates: pd.DatetimeIndex,
+    inflation_rates: dict[int, float],
+) -> pd.Series:
+    """Build monthly contribution schedule with annual CPI revalorization.
+
+    At the start of each calendar year, the contribution is adjusted by the
+    PREVIOUS year's average annual CPI (GUS wskaźnik średnioroczny).
+    """
+    amounts = []
+    current_amount = base_amount
+    current_year = dates[0].year
+
+    for dt in dates:
+        if dt.year > current_year:
+            prev_year_cpi = inflation_rates.get(dt.year - 1, 0.0)
+            current_amount *= (1 + prev_year_cpi)
+            current_year = dt.year
+        amounts.append(round(current_amount, 2))
+
+    return pd.Series(amounts, index=dates, name="contribution")
+
+
 def compute_benchmark(prices: pd.DataFrame, ticker: str,
-                      initial_capital: float) -> dict:
-    """Buy-and-hold benchmark: invest initial_capital in ticker at first available date."""
+                      initial_capital: float,
+                      contribution_schedule: pd.Series | None = None) -> dict:
+    """Buy-and-hold benchmark with optional DCA contributions.
+
+    When contribution_schedule is provided, each month's contribution buys
+    additional shares at market price (no costs — pure benchmark).
+    """
     if ticker not in prices.columns:
         return {}
     s = prices[ticker].dropna()
     if s.empty:
         return {}
-    equity = initial_capital * s / s.iloc[0]
-    m = compute_all(equity, label=f"Benchmark ({ticker})")
+
+    if contribution_schedule is not None:
+        contrib_lookup = contribution_schedule.to_dict()
+        shares = 0.0
+        equity_vals = []
+        for dt in s.index:
+            contrib = contrib_lookup.get(dt, 0.0)
+            if contrib > 0:
+                shares += contrib / s[dt]
+            if initial_capital > 0 and dt == s.index[0]:
+                shares += initial_capital / s[dt]
+                initial_capital = 0.0
+            equity_vals.append(shares * s[dt])
+        equity = pd.Series(equity_vals, index=s.index)
+    else:
+        equity = initial_capital * s / s.iloc[0]
+
+    m = compute_all(equity, label=f"Benchmark ({ticker})",
+                    initial_capital=initial_capital if contribution_schedule is None else 0.0,
+                    contribution_schedule=contribution_schedule)
     m["ticker"] = ticker
     return m
 
@@ -103,7 +150,7 @@ def etap1(cfg):
 #  ETAP 2 — Baseline GEM
 # ════════════════════════════════════════════════════════════════════
 
-def etap2(cfg, prices, brokers):
+def etap2(cfg, prices, brokers, contribution_schedule):
     print_header("ETAP 2: Baseline GEM (5 ETF, bez deadbandu)")
     u5 = cfg["universes"]["U5"]
     risky = [t for t in u5["risky"] if t in prices.columns]
@@ -114,8 +161,11 @@ def etap2(cfg, prices, brokers):
     results_summary = []
 
     for bname, broker in brokers.items():
-        res = run_gem(prices, broker, risky, safe, cap, deadband=0.0)
-        m = compute_all(res.equity, label=broker.name)
+        res = run_gem(prices, broker, risky, safe, cap, deadband=0.0,
+                      contribution_schedule=contribution_schedule)
+        m = compute_all(res.equity, label=broker.name,
+                        initial_capital=cap,
+                        contribution_schedule=contribution_schedule)
         m["broker"] = bname
         m["rotations"] = res.num_rotations
         m["total_costs"] = res.total_costs
@@ -128,22 +178,13 @@ def etap2(cfg, prices, brokers):
             trades_df.to_csv(RESULTS / f"trades_baseline_{bname}.csv", index=False)
 
         print(f"\n  {broker.name}:")
-        print(f"    CAGR = {m['cagr']:.2%}, Sharpe = {m['sharpe']:.2f}, "
+        print(f"    XIRR = {m['xirr']:.2%}, Sharpe = {m['sharpe']:.2f}, "
               f"MaxDD = {m['max_drawdown']:.2%}")
         print(f"    Rotacje = {res.num_rotations}, Koszty = {res.total_costs:.2f}, "
               f"Podatki = {res.total_taxes:.2f}")
         print(f"    Wartość końcowa = {m['final_value']:.2f}")
 
-    # add benchmark buy-and-hold to the plot
-    bench_ticker = cfg["data"].get("benchmark", "VWRL.L")
-    if bench_ticker in prices.columns:
-        bench_s = prices[bench_ticker].dropna()
-        bench_equity = cap * bench_s / bench_s.iloc[0]
-        ax.plot(bench_equity.index, bench_equity.values,
-                label=f"Benchmark ({bench_ticker})", linewidth=2,
-                linestyle="--", color="black", alpha=0.6)
-
-    ax.set_title("Baseline GEM (U5, deadband=0) — porównanie brokerów")
+    ax.set_title("Baseline GEM (U5, deadband=0, DCA) — porównanie brokerów")
     ax.set_ylabel("Wartość portfela (PLN)")
     ax.legend()
     ax.grid(True, alpha=0.3)
@@ -158,7 +199,7 @@ def etap2(cfg, prices, brokers):
 #  ETAP 3 — Broker comparison (detailed)
 # ════════════════════════════════════════════════════════════════════
 
-def etap3(cfg, prices, brokers):
+def etap3(cfg, prices, brokers, contribution_schedule):
     print_header("ETAP 3: Porównanie brokerów (różne deadbandy)")
     u5 = cfg["universes"]["U5"]
     risky = [t for t in u5["risky"] if t in prices.columns]
@@ -174,15 +215,15 @@ def etap3(cfg, prices, brokers):
 
     all_results = {}
     for bname, broker in brokers.items():
-        df = sweep_deadbands(prices, broker, risky, safe, cap, deadbands)
+        df = sweep_deadbands(prices, broker, risky, safe, cap, deadbands,
+                             contribution_schedule=contribution_schedule)
         df["broker"] = bname
         all_results[bname] = df
         df.to_csv(RESULTS / f"deadband_sweep_{bname}.csv", index=False)
 
-    # plot: CAGR vs deadband per broker
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    metrics_to_plot = ["cagr", "sharpe", "max_drawdown", "rotations"]
-    titles = ["CAGR", "Sharpe", "Max Drawdown", "Rotacje"]
+    metrics_to_plot = ["xirr", "sharpe", "max_drawdown", "rotations"]
+    titles = ["XIRR", "Sharpe", "Max Drawdown", "Rotacje"]
 
     for ax, metric, title in zip(axes.flat, metrics_to_plot, titles):
         for bname, df in all_results.items():
@@ -204,7 +245,7 @@ def etap3(cfg, prices, brokers):
 #  ETAP 4 — Deadband calibration
 # ════════════════════════════════════════════════════════════════════
 
-def etap4(cfg, prices, brokers, benchmark_metrics, baseline_summary):
+def etap4(cfg, prices, brokers, benchmark_metrics, baseline_summary, contribution_schedule):
     print_header("ETAP 4: Kalibracja deadbandu (statyczny + dynamiczny)")
     u5 = cfg["universes"]["U5"]
     risky = [t for t in u5["risky"] if t in prices.columns]
@@ -213,8 +254,8 @@ def etap4(cfg, prices, brokers, benchmark_metrics, baseline_summary):
     db_cfg = cfg["deadband"]
 
     bench_maxdd = benchmark_metrics.get("max_drawdown", -1.0) if benchmark_metrics else -1.0
-    bench_cagr = benchmark_metrics.get("cagr", 0.0) if benchmark_metrics else 0.0
-    print(f"\n  Benchmark: CAGR={bench_cagr:.2%}, MaxDD={bench_maxdd:.2%}")
+    bench_xirr = benchmark_metrics.get("xirr", 0.0) if benchmark_metrics else 0.0
+    print(f"\n  Benchmark (DCA): XIRR={bench_xirr:.2%}, MaxDD={bench_maxdd:.2%}")
 
     deadbands = list(np.arange(
         db_cfg["static_range"][0],
@@ -222,7 +263,6 @@ def etap4(cfg, prices, brokers, benchmark_metrics, baseline_summary):
         db_cfg["static_step"],
     ))
 
-    # Identify cheapest IKE broker (highest baseline final_value = lowest friction)
     ike_keys = ["xtb_ike", "bossa_ike_promo", "bossa_ike_standard", "mbank_ike"]
     ike_in_bl = baseline_summary[baseline_summary["broker"].isin(ike_keys)]
     if not ike_in_bl.empty:
@@ -234,14 +274,14 @@ def etap4(cfg, prices, brokers, benchmark_metrics, baseline_summary):
     print(f"\n  Broker referencyjny (najtańszy IKE): {ref_broker.name}")
     print(f"  MaxDD constraint oceniany na brokerze z najniższymi tarciami")
 
-    # Sweep on reference broker → IS optimum with MaxDD constraint
-    ref_sweep = sweep_deadbands(prices, ref_broker, risky, safe, cap, deadbands)
-    ref_sweep["excess_cagr"] = ref_sweep["cagr"] - bench_cagr
+    ref_sweep = sweep_deadbands(prices, ref_broker, risky, safe, cap, deadbands,
+                                contribution_schedule=contribution_schedule)
+    ref_sweep["excess_xirr"] = ref_sweep["xirr"] - bench_xirr
     ref_sweep.to_csv(RESULTS / f"deadband_sweep_reference_{ref_broker_name}.csv", index=False)
 
     safe_df = ref_sweep[ref_sweep["max_drawdown"] >= bench_maxdd]
     if not safe_df.empty:
-        best_idx = safe_df["excess_cagr"].idxmax()
+        best_idx = safe_df["excess_xirr"].idxmax()
         best_row = safe_df.loc[best_idx]
         selection_note = f"MaxDD <= benchmark (ref: {ref_broker.name})"
     else:
@@ -251,24 +291,27 @@ def etap4(cfg, prices, brokers, benchmark_metrics, baseline_summary):
 
     is_optimal_db = float(best_row["deadband"])
     print(f"\n  IS optymalny deadband = {is_optimal_db:.3f} ({is_optimal_db*100:.1f}%) [{selection_note}]")
-    print(f"    CAGR = {best_row['cagr']:.2%} (excess: {best_row['excess_cagr']:+.2%}), "
+    print(f"    XIRR = {best_row['xirr']:.2%} (excess: {best_row['excess_xirr']:+.2%}), "
           f"MaxDD = {best_row['max_drawdown']:.2%}, Rotacje = {int(best_row['rotations'])}")
 
     # Per-broker metrics at IS optimal deadband
     optimal = {}
     for bname, broker in brokers.items():
-        res = run_gem(prices, broker, risky, safe, cap, deadband=is_optimal_db)
-        m = compute_all(res.equity, label=broker.name)
+        res = run_gem(prices, broker, risky, safe, cap, deadband=is_optimal_db,
+                      contribution_schedule=contribution_schedule)
+        m = compute_all(res.equity, label=broker.name,
+                        initial_capital=cap,
+                        contribution_schedule=contribution_schedule)
         optimal[bname] = dict(
             deadband=is_optimal_db,
             sharpe=m["sharpe"],
-            cagr=m["cagr"],
-            excess_cagr=m["cagr"] - bench_cagr,
+            xirr=m["xirr"],
+            excess_xirr=m["xirr"] - bench_xirr,
             max_drawdown=m["max_drawdown"],
             rotations=res.num_rotations,
         )
         print(f"\n  {broker.name} @ db={is_optimal_db:.3f}:")
-        print(f"    CAGR = {m['cagr']:.2%} (excess: {m['cagr'] - bench_cagr:+.2%}), "
+        print(f"    XIRR = {m['xirr']:.2%} (excess: {m['xirr'] - bench_xirr:+.2%}), "
               f"Sharpe = {m['sharpe']:.2f}, MaxDD = {m['max_drawdown']:.2%}")
 
     # Dynamic deadband tests
@@ -282,8 +325,11 @@ def etap4(cfg, prices, brokers, benchmark_metrics, baseline_summary):
                 prices, broker, risky, safe, cap,
                 base=dyn_cfg["base"], k=k,
                 vol_window=dyn_cfg["vol_window_months"],
+                contribution_schedule=contribution_schedule,
             )
-            m = compute_all(res.equity, label=f"{bname}_k={k:.2f}")
+            m = compute_all(res.equity, label=f"{bname}_k={k:.2f}",
+                            initial_capital=cap,
+                            contribution_schedule=contribution_schedule)
             m["broker"] = bname
             m["k"] = k
             m["base"] = dyn_cfg["base"]
@@ -301,7 +347,7 @@ def etap4(cfg, prices, brokers, benchmark_metrics, baseline_summary):
             continue
         best = sub.loc[sub["sharpe"].idxmax()]
         print(f"    {bname}: best k={best['k']:.2f}, Sharpe={best['sharpe']:.2f}, "
-              f"CAGR={best['cagr']:.2%}")
+              f"XIRR={best['xirr']:.2%}")
 
     return is_optimal_db, optimal, ref_broker_name, dyn_df
 
@@ -310,33 +356,32 @@ def etap4(cfg, prices, brokers, benchmark_metrics, baseline_summary):
 #  ETAP 5 — Universe expansion
 # ════════════════════════════════════════════════════════════════════
 
-def etap5(cfg, prices, broker, optimal_db):
+def etap5(cfg, prices, broker, optimal_db, contribution_schedule):
     print_header("ETAP 5: Rozszerzanie uniwersum ETF")
     cap = cfg["portfolio"]["initial_capital_pln"]
-
-    # Use the optimal deadband for the given broker
     db = optimal_db
 
-    comp = compare_universes(prices, broker, cfg["universes"], cap, deadband=db)
+    comp = compare_universes(prices, broker, cfg["universes"], cap, deadband=db,
+                             contribution_schedule=contribution_schedule)
     comp.to_csv(RESULTS / "universe_comparison.csv", index=False)
 
     print(f"\n  Deadband = {db:.3f}, Broker = {broker.name}")
     for _, row in comp.iterrows():
         print(f"    {row['universe']} ({int(row['n_etfs'])} ETF): "
-              f"CAGR={row['cagr']:.2%}, Sharpe={row['sharpe']:.2f}, "
+              f"XIRR={row['xirr']:.2%}, Sharpe={row['sharpe']:.2f}, "
               f"MaxDD={row['max_drawdown']:.2%}, Rotacje={int(row['rotations'])}")
 
-    # equity curves per universe
     fig, ax = plt.subplots(figsize=(14, 6))
     for name, univ in cfg["universes"].items():
         r = [t for t in univ["risky"] if t in prices.columns]
         s = [t for t in univ["safe"] if t in prices.columns]
         if not r or not s:
             continue
-        res = run_gem(prices, broker, r, s, cap, deadband=db)
+        res = run_gem(prices, broker, r, s, cap, deadband=db,
+                      contribution_schedule=contribution_schedule)
         ax.plot(res.equity.index, res.equity.values, label=name, linewidth=1.5)
 
-    ax.set_title(f"Porównanie uniwersów ETF (deadband={db:.3f}, {broker.name})")
+    ax.set_title(f"Porównanie uniwersów ETF (deadband={db:.3f}, DCA, {broker.name})")
     ax.set_ylabel("Wartość portfela (PLN)")
     ax.legend()
     ax.grid(True, alpha=0.3)
@@ -349,7 +394,8 @@ def etap5(cfg, prices, broker, optimal_db):
 #  ETAP 6 — Robustness
 # ════════════════════════════════════════════════════════════════════
 
-def etap6(cfg, prices, daily_prices, broker, optimal_db):
+def etap6(cfg, prices, daily_prices, broker, optimal_db, contribution_schedule,
+          inflation_rates, base_contribution):
     print_header("ETAP 6: Testy odporności")
     u5 = cfg["universes"]["U5"]
     risky = [t for t in u5["risky"] if t in prices.columns]
@@ -370,6 +416,7 @@ def etap6(cfg, prices, daily_prices, broker, optimal_db):
         train_months=cfg["walk_forward"]["train_months"],
         test_months=cfg["walk_forward"]["test_months"],
         step_months=cfg["walk_forward"]["step_months"],
+        contribution_schedule=contribution_schedule,
     )
     if not wf["folds"].empty:
         wf["folds"].to_csv(RESULTS / "walk_forward_folds.csv", index=False)
@@ -377,8 +424,8 @@ def etap6(cfg, prices, daily_prices, broker, optimal_db):
         print(wf["folds"].to_string())
         if len(wf["oos_equity"]) > 1:
             oos_m = compute_all(wf["oos_equity"], label="OOS")
-            print(f"\n    OOS stitched: CAGR={oos_m['cagr']:.2%}, "
-                  f"Sharpe={oos_m['sharpe']:.2f}, MaxDD={oos_m['max_drawdown']:.2%}")
+            print(f"\n    OOS stitched: Sharpe={oos_m['sharpe']:.2f}, "
+                  f"MaxDD={oos_m['max_drawdown']:.2%}")
 
             fig, ax = plt.subplots(figsize=(12, 5))
             ax.plot(wf["oos_equity"].index, wf["oos_equity"].values, linewidth=1.5)
@@ -393,18 +440,21 @@ def etap6(cfg, prices, daily_prices, broker, optimal_db):
     print("\n  Timing luck test...")
     if daily_prices is not None and not daily_prices.empty:
         offsets = cfg.get("rebalance_days", [1, 5, 10, 15, 20])
-        tl = timing_luck_test(daily_prices, broker, risky, safe, cap, optimal_db, offsets)
+        tl = timing_luck_test(daily_prices, broker, risky, safe, cap, optimal_db, offsets,
+                              contribution_schedule=contribution_schedule,
+                              inflation_rates=inflation_rates,
+                              base_contribution=base_contribution)
         if not tl.empty:
             tl.to_csv(RESULTS / "timing_luck.csv", index=False)
             print("    Wyniki timing luck:")
             for _, row in tl.iterrows():
-                print(f"      Offset {int(row['offset'])}: CAGR={row['cagr']:.2%}, "
+                print(f"      Offset {int(row['offset'])}: XIRR={row['xirr']:.2%}, "
                       f"Sharpe={row['sharpe']:.2f}")
 
             fig, ax = plt.subplots(figsize=(10, 5))
-            ax.bar(tl["offset"], tl["cagr"], color="steelblue", alpha=0.8)
+            ax.bar(tl["offset"], tl["xirr"], color="steelblue", alpha=0.8)
             ax.set_xlabel("Dzień roboczy miesiąca (offset)")
-            ax.set_ylabel("CAGR")
+            ax.set_ylabel("XIRR")
             ax.set_title("Timing Luck — wrażliwość na dzień rebalancingu")
             ax.grid(True, alpha=0.3, axis="y")
             save_fig(fig, "timing_luck.png")
@@ -425,8 +475,11 @@ def etap6(cfg, prices, daily_prices, broker, optimal_db):
             slippage=0.001,
             capital_gains_tax=0.0,
         )
-        res = run_gem(prices, test_broker, risky, safe, cap, deadband=optimal_db)
-        m = compute_all(res.equity, label=f"fx={fx:.4f}")
+        res = run_gem(prices, test_broker, risky, safe, cap, deadband=optimal_db,
+                      contribution_schedule=contribution_schedule)
+        m = compute_all(res.equity, label=f"fx={fx:.4f}",
+                        initial_capital=cap,
+                        contribution_schedule=contribution_schedule)
         m["fx_cost_per_leg"] = fx
         m["rotations"] = res.num_rotations
         m["total_costs"] = res.total_costs
@@ -434,7 +487,7 @@ def etap6(cfg, prices, daily_prices, broker, optimal_db):
 
     fx_df = pd.DataFrame(fx_results)
     fx_df.to_csv(RESULTS / "fx_sensitivity.csv", index=False)
-    print(fx_df[["fx_cost_per_leg", "cagr", "sharpe", "total_costs", "final_value"]].to_string())
+    print(fx_df[["fx_cost_per_leg", "xirr", "sharpe", "total_costs", "final_value"]].to_string())
 
     return wf
 
@@ -451,22 +504,46 @@ def etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result, prices, 
     risky = [t for t in u5["risky"] if t in prices.columns]
     safe = [t for t in u5["safe"] if t in prices.columns]
 
-    # Contribution scenarios
-    print("\n  Scenariusze z regularnymi wpłatami:")
+    # Contribution scenarios — start from 0 PLN, inflation-adjusted monthly contributions
+    print("\n  Scenariusze z regularnymi wpłatami (kapitał startowy = 0, rewaloryzacja CPI):")
+    inflation_rates = load_cpi_annual()
+    print(f"  CPI załadowane z pliku GUS ({len(inflation_rates)} lat: {min(inflation_rates)}–{max(inflation_rates)})")
+
+    # Determine simulation date range (same as backtest would use)
+    from src.momentum import compute_momentum, select_best
+    all_tickers = [t for t in risky + safe if t in prices.columns]
+    mom = compute_momentum(prices[all_tickers], lookback=13, skip=1)
+    signals = select_best(mom, risky, safe)
+    valid_idx = signals.dropna(subset=["target"]).index
+    sim_dates = prices.loc[valid_idx[0]:].index
+
     contribution_results = []
-    for contrib in cfg["portfolio"]["contribution_scenarios"]:
+    for contrib_base in cfg["portfolio"]["contribution_scenarios"]:
+        schedule = build_contribution_schedule(contrib_base, sim_dates, inflation_rates)
+        total_contributed = schedule.sum()
+
+        print(f"\n  Wpłata bazowa: {contrib_base} PLN/mies. (rewaloryzowana o CPI)")
+        print(f"    Okres: {sim_dates[0].date()} → {sim_dates[-1].date()} ({len(sim_dates)} mies.)")
+        print(f"    Wpłata końcowa (po inflacji): {schedule.iloc[-1]:.2f} PLN/mies.")
+        print(f"    Suma wpłat: {total_contributed:,.0f} PLN")
+
         for bname, broker in brokers.items():
             db = optimal_dbs.get(bname, {}).get("deadband", 0.03)
-            res = run_gem(prices, broker, risky, safe, cap,
-                          deadband=db, monthly_contribution=contrib)
-            m = compute_all(res.equity, label=f"{bname}_contrib={contrib}")
+            res = run_gem(prices, broker, risky, safe, 0.0,
+                          deadband=db, contribution_schedule=schedule)
+            m = compute_all(res.equity, label=f"{bname}_contrib={contrib_base}",
+                            initial_capital=0.0,
+                            contribution_schedule=schedule)
             m["broker"] = bname
-            m["monthly_contribution"] = contrib
+            m["base_contribution"] = contrib_base
+            m["total_contributed"] = total_contributed
+            m["final_contribution"] = schedule.iloc[-1]
             m["optimal_deadband"] = db
             m["rotations"] = res.num_rotations
             m["total_costs"] = res.total_costs
             m["total_taxes"] = res.total_taxes
             contribution_results.append(m)
+            print(f"    {broker.name}: {m['final_value']:,.0f} PLN (mnożnik: {m['final_value']/total_contributed:.2f}×)")
 
     contrib_df = pd.DataFrame(contribution_results)
     contrib_df.to_csv(RESULTS / "contribution_scenarios.csv", index=False)
@@ -486,11 +563,12 @@ def etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result, prices, 
             broker = brokers[bname]
             db = optimal_dbs.get(bname, {}).get("deadband", 0.03)
             res = run_gem(prices, broker, risky, safe, test_cap, deadband=db)
-            m = compute_all(res.equity, label=bname)
+            m = compute_all(res.equity, label=bname,
+                            initial_capital=test_cap)
             results_by_broker[bname] = m
             crossover_data.append(dict(
                 capital=test_cap, broker=bname,
-                cagr=m["cagr"], final_value=m["final_value"],
+                xirr=m["xirr"], final_value=m["final_value"],
             ))
 
         if "xtb_ike" in results_by_broker:
@@ -575,10 +653,10 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
     db_rows = []
     for bk in ike_keys:
         if bk in optimal_dbs:
-            excess = optimal_dbs[bk].get("excess_cagr", 0.0)
+            excess = optimal_dbs[bk].get("excess_xirr", 0.0)
             maxdd = optimal_dbs[bk].get("max_drawdown", 0.0)
             label = brokers[bk].name if bk in brokers else bk
-            db_rows.append(f"| {label} | {excess:+.2%} | {maxdd:.2%} | {optimal_dbs[bk].get('sharpe', 0):.2f} |")
+            db_rows.append(f"| {label} | {excess:+.2%} | {maxdd:.2%} | {optimal_dbs[bk].get('sharpe', 0):.2f} |")  # excess = excess_xirr
 
     # recommended universe
     is_db_for_display = blend_info.get("is_optimal", 0) if blend_info else 0
@@ -586,7 +664,7 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
         best_univ = universe_comp.loc[universe_comp["sharpe"].idxmax()]
         rec_universe = best_univ["universe"]
         rec_univ_detail = (f"{rec_universe} ({int(best_univ['n_etfs'])} ETF-ów): "
-                           f"Sharpe={best_univ['sharpe']:.2f}, CAGR={best_univ['cagr']:.2%} "
+                           f"Sharpe={best_univ['sharpe']:.2f}, XIRR={best_univ['xirr']:.2%} "
                            f"(testowane przy IS deadband={is_db_for_display:.1%})")
     else:
         rec_universe = "U5"
@@ -631,12 +709,12 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
     # benchmark section
     if benchmark_metrics:
         bench_ticker = benchmark_metrics.get("ticker", "IWDA.L")
-        bench_cagr = benchmark_metrics.get("cagr", 0)
+        bench_xirr_val = benchmark_metrics.get("xirr", 0)
         bench_maxdd = benchmark_metrics.get("max_drawdown", 0)
         bench_final = benchmark_metrics.get("final_value", 0)
         bench_section = f"""
-## Benchmark: {bench_ticker} (pasywny buy-and-hold)
-- CAGR: {bench_cagr:.2%}
+## Benchmark: {bench_ticker} (pasywny DCA)
+- XIRR: {bench_xirr_val:.2%}
 - MaxDD: {bench_maxdd:.2%}
 - Wartość końcowa: {bench_final:,.0f} PLN
 """
@@ -653,7 +731,7 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
 
 ### Jak obliczono:
 1. **Broker referencyjny**: {ref_broker_label} (najtańszy IKE — najniższe tarcia kosztowe)
-2. **IS optymalny** (in-sample): {is_opt:.3f} ({is_opt*100:.1f}%) — najwyższy excess CAGR
+2. **IS optymalny** (in-sample): {is_opt:.3f} ({is_opt*100:.1f}%) — najwyższy excess XIRR
    spośród deadbandów, których MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku
 """
     if oos_avg is not None:
@@ -672,7 +750,7 @@ na nowych danych. Uśrednienie daje kompromis odporny na overfitting.
     blend_section += f"""
 ### Wyniki per broker @ deadband = {blended_db:.3f}
 
-| Broker | Excess CAGR | MaxDD | Sharpe |
+| Broker | Excess XIRR | MaxDD | Sharpe |
 |--------|-------------|-------|--------|
 {chr(10).join(db_rows)}
 
@@ -688,17 +766,43 @@ Rekomendowane: **{rec_universe}**
 
 {oos_note}
 
-## 5. Scenariusze z regularnymi wpłatami
+## 5. Scenariusze z regularnymi wpłatami (kapitał startowy = 0, CPI rewaloryzacja)
+
+Wpłaty co miesiąc, rewaloryzowane o wskaźnik średniorocznej inflacji CPI (GUS) na początku każdego roku.
+Kapitał startowy = 0 PLN.
 
 """
     if not contrib_df.empty:
-        pivot = contrib_df.pivot_table(
-            index="monthly_contribution",
+        # Build a richer table with total_contributed and multiplier
+        rows_memo = []
+        for _, row in contrib_df.iterrows():
+            rows_memo.append(dict(
+                wpłata_bazowa=int(row["base_contribution"]),
+                broker=row["broker"],
+                suma_wpłat=row["total_contributed"],
+                wartość_końcowa=row["final_value"],
+                mnożnik=row["final_value"] / row["total_contributed"] if row["total_contributed"] > 0 else 0,
+            ))
+        detail_df = pd.DataFrame(rows_memo)
+
+        pivot_val = contrib_df.pivot_table(
+            index="base_contribution",
             columns="broker",
             values="final_value",
             aggfunc="first",
         )
-        memo += pivot.to_markdown(floatfmt=",.0f") + "\n"
+        pivot_val.index.name = "wpłata bazowa (PLN/mies.)"
+        memo += "### Wartość końcowa portfela\n\n"
+        memo += pivot_val.to_markdown(floatfmt=",.0f") + "\n\n"
+
+        # Total contributed (same for all brokers within a base_contribution level)
+        total_contribs = contrib_df.drop_duplicates(subset=["base_contribution"])[["base_contribution", "total_contributed", "final_contribution"]]
+        memo += "### Suma wpłat i rewaloryzacja\n\n"
+        memo += "| Wpłata bazowa | Wpłata końcowa (po CPI) | Suma wpłat |\n"
+        memo += "|:---:|:---:|:---:|\n"
+        for _, r in total_contribs.iterrows():
+            memo += f"| {int(r['base_contribution'])} PLN | {r['final_contribution']:.0f} PLN | {r['total_contributed']:,.0f} PLN |\n"
+        memo += "\n"
 
     memo += f"""
 ## Podsumowanie decyzji
@@ -722,6 +826,7 @@ Rekomendowane: **{rec_universe}**
 def main():
     print("=" * 70)
     print("  GEM IKE Backtest — Pełna analiza penetracyjna")
+    print("  Tryb: start=0, regularne wpłaty z CPI rewaloryzacją")
     print("=" * 70)
 
     cfg = load_config()
@@ -731,6 +836,17 @@ def main():
 
     # ETAP 1 — data
     prices = etap1(cfg)
+
+    # ── Build fitting contribution schedule (used for ALL calibration) ──
+    from src.data import load_cpi_annual
+    inflation_rates = load_cpi_annual()
+    base_contribution = cfg["portfolio"]["fitting_base_contribution_pln"]
+    contribution_schedule = build_contribution_schedule(
+        base_contribution, prices.index, inflation_rates
+    )
+    cap = cfg["portfolio"]["initial_capital_pln"]  # 0.0
+    print(f"\n  Fitting: initial_capital={cap:.0f}, base_contribution={base_contribution:.0f} PLN/mies")
+    print(f"  Contribution schedule: {contribution_schedule.iloc[0]:.2f} → {contribution_schedule.iloc[-1]:.2f} PLN")
 
     # also fetch daily prices for timing luck test
     tickers_u5 = cfg["universes"]["U5"]["risky"] + cfg["universes"]["U5"]["safe"]
@@ -753,32 +869,33 @@ def main():
     except Exception as e:
         print(f"  Nie udało się pobrać danych dziennych: {e}")
 
-    # Benchmark buy-and-hold
+    # Benchmark DCA (same contribution schedule, no costs)
     bench_ticker = cfg["data"].get("benchmark", "VWRL.L")
-    cap = cfg["portfolio"]["initial_capital_pln"]
-    benchmark_metrics = compute_benchmark(prices, bench_ticker, cap)
+    benchmark_metrics = compute_benchmark(prices, bench_ticker, cap,
+                                          contribution_schedule=contribution_schedule)
     if benchmark_metrics:
-        print(f"\n  Benchmark ({bench_ticker}): CAGR={benchmark_metrics['cagr']:.2%}, "
+        print(f"\n  Benchmark DCA ({bench_ticker}): XIRR={benchmark_metrics['xirr']:.2%}, "
               f"MaxDD={benchmark_metrics['max_drawdown']:.2%}, "
               f"Wartość końcowa={benchmark_metrics['final_value']:.0f}")
 
     # ETAP 2 — baseline
-    baseline_summary = etap2(cfg, prices, brokers)
+    baseline_summary = etap2(cfg, prices, brokers, contribution_schedule)
 
     # ETAP 3 — broker comparison with deadband sweep
-    all_sweep = etap3(cfg, prices, brokers)
+    all_sweep = etap3(cfg, prices, brokers, contribution_schedule)
 
-    # ETAP 4 — deadband calibration (MaxDD constraint from cheapest IKE)
+    # ETAP 4 — deadband calibration (MaxDD constraint from benchmark DCA)
     is_optimal_db, optimal_dbs, ref_broker_name, dyn_df = etap4(
-        cfg, prices, brokers, benchmark_metrics, baseline_summary
+        cfg, prices, brokers, benchmark_metrics, baseline_summary, contribution_schedule
     )
     ref_broker = brokers[ref_broker_name]
 
     # ETAP 5 — universe expansion (use cheapest IKE as reference)
-    universe_comp = etap5(cfg, prices, ref_broker, is_optimal_db)
+    universe_comp = etap5(cfg, prices, ref_broker, is_optimal_db, contribution_schedule)
 
     # ETAP 6 — robustness (walk-forward, timing luck, cost sensitivity)
-    wf_result = etap6(cfg, prices, daily_prices, ref_broker, is_optimal_db)
+    wf_result = etap6(cfg, prices, daily_prices, ref_broker, is_optimal_db,
+                      contribution_schedule, inflation_rates, base_contribution)
 
     # ── Blend IS + OOS → final recommended deadband ──
     db_cfg = cfg["deadband"]
@@ -821,19 +938,22 @@ def main():
         print(f"  Brak danych OOS — używany IS optymalny")
 
     # Re-compute per-broker metrics at blended deadband
-    bench_cagr = benchmark_metrics.get("cagr", 0.0) if benchmark_metrics else 0.0
+    bench_xirr_val = benchmark_metrics.get("xirr", 0.0) if benchmark_metrics else 0.0
     u5 = cfg["universes"]["U5"]
     risky = [t for t in u5["risky"] if t in prices.columns]
     safe = [t for t in u5["safe"] if t in prices.columns]
 
     for bname, broker in brokers.items():
-        res = run_gem(prices, broker, risky, safe, cap, deadband=blended_db)
-        m = compute_all(res.equity, label=bname)
+        res = run_gem(prices, broker, risky, safe, cap, deadband=blended_db,
+                      contribution_schedule=contribution_schedule)
+        m = compute_all(res.equity, label=bname,
+                        initial_capital=cap,
+                        contribution_schedule=contribution_schedule)
         optimal_dbs[bname] = dict(
             deadband=blended_db,
             sharpe=m["sharpe"],
-            cagr=m["cagr"],
-            excess_cagr=m["cagr"] - bench_cagr,
+            xirr=m["xirr"],
+            excess_xirr=m["xirr"] - bench_xirr_val,
             max_drawdown=m["max_drawdown"],
             rotations=res.num_rotations,
         )

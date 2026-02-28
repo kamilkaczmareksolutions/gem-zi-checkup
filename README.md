@@ -52,6 +52,8 @@ Co miesiac:
 .
 ├── run_all.py               # Glowny runner -- uruchamia cala analize
 ├── spec_inputs.yaml         # Konfiguracja parametrow (brokerzy, ETF-y, deadbandy)
+├── .env.local               # Szablon zmiennych srodowiskowych (klucz GUS API)
+├── .env                     # Twoj klucz API (NIE commitowany, w .gitignore)
 ├── assumptions.md           # Jawne zalozenia symulacji
 ├── METODOLOGIA.md           # Pelna dokumentacja techniczna metodologii
 ├── requirements.txt         # Zaleznosci Python
@@ -77,11 +79,22 @@ Co miesiac:
     └── ...
 ```
 
+## Konfiguracja
+
+Skopiuj plik `.env.local` do `.env` i wpisz swoj klucz API GUS:
+
+```bash
+cp .env.local .env
+# Edytuj .env i wstaw prawdziwy klucz z https://api.stat.gov.pl/Home/BdlApi
+```
+
+Klucz sluzy do pobierania danych o inflacji CPI (wskaznik srednioroczny) z API Banku Danych Lokalnych GUS. Rejestracja jest darmowa. 
+
 ## Uruchomienie
 
 ```bash
 pip install -r requirements.txt
-python run_all.py
+python -m run_all
 ```
 
 Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance (~1 min), kolejne korzystaja z cache.

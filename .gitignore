@@ -3,3 +3,4 @@ __pycache__/
 data_cache/
 .cursor/
 *.plan.md
+.env

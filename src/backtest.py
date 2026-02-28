@@ -31,6 +31,7 @@ def run_gem(
     lookback: int = 13,
     skip: int = 1,
     monthly_contribution: float = 0.0,
+    contribution_schedule: pd.Series | None = None,
     rebalance_day_offset: int = 0,
 ) -> BacktestResult:
     """Run a single GEM backtest.
@@ -42,6 +43,8 @@ def run_gem(
     risky, safe : ticker lists
     initial_capital : starting value in original currency units
     deadband : minimum momentum spread required for rotation
+    monthly_contribution : fixed monthly amount (ignored if contribution_schedule given)
+    contribution_schedule : time-varying monthly contributions indexed by date
     rebalance_day_offset : ignored in month-end mode (reserved for timing-luck)
     """
     all_tickers = [t for t in risky + safe if t in prices.columns]
@@ -72,16 +75,18 @@ def run_gem(
     trades: list[dict] = []
     holding_series: list[str] = []
 
+    contrib_lookup = contribution_schedule.to_dict() if contribution_schedule is not None else None
+
     for dt in ts_range:
-        if monthly_contribution > 0:
-            dep_cost = monthly_contribution * broker.deposit_fx_cost
-            capital += monthly_contribution - dep_cost
+        contrib = contrib_lookup[dt] if contrib_lookup and dt in contrib_lookup else monthly_contribution
+        if contrib > 0:
+            dep_cost = contrib * broker.deposit_fx_cost
+            capital += contrib - dep_cost
             total_costs += dep_cost
 
         if dt not in signals.index:
-            # no signal this month, hold position
             if current_holding and current_holding in prices.columns:
-                port_val = current_shares * prices.loc[dt, current_holding] + cash
+                port_val = current_shares * prices.loc[dt, current_holding] + cash + capital
             else:
                 port_val = capital + cash
             equity_vals.append(port_val)
@@ -94,7 +99,7 @@ def run_gem(
 
         if target is None or (target not in prices.columns):
             if current_holding and current_holding in prices.columns:
-                port_val = current_shares * prices.loc[dt, current_holding] + cash
+                port_val = current_shares * prices.loc[dt, current_holding] + cash + capital
             else:
                 port_val = capital + cash
             equity_vals.append(port_val)
@@ -133,7 +138,18 @@ def run_gem(
             regime_change = was_risk_off != going_risk_off
 
             if not regime_change and spread < deadband:
-                # insufficient spread -> hold
+                # insufficient spread → hold; invest any pending capital
+                if capital > 0:
+                    price = prices.loc[dt, current_holding]
+                    add_cost_frac = broker.buy_cost_pct(capital)
+                    investable = capital * (1.0 - add_cost_frac)
+                    cost_paid = capital * add_cost_frac
+                    total_costs += cost_paid
+                    new_shares, new_res = broker.shares_and_residual(investable, price)
+                    current_shares += new_shares
+                    cash += new_res
+                    cost_basis += new_shares * price
+                    capital = 0.0
                 port_val = current_shares * prices.loc[dt, current_holding] + cash
                 equity_vals.append(port_val)
                 equity_dates.append(dt)
@@ -176,8 +192,8 @@ def run_gem(
             trades.append(dict(date=dt, action="BUY", ticker=target,
                                shares=shares, price=buy_price, cost=buy_cost))
         else:
-            # same holding — optionally add new contributions
-            if monthly_contribution > 0 and capital > 0:
+            # same holding — invest any accumulated capital
+            if capital > 0:
                 price = prices.loc[dt, current_holding]
                 add_cost_frac = broker.buy_cost_pct(capital)
                 investable = capital * (1.0 - add_cost_frac)
