@@ -21,23 +21,29 @@ Przy kapitale 9000 PLN, najlepszy wynik końcowy daje BOSSA IKE (promo) (XTB IKE
 - BOSSA IKE (promo) > XTB od kapitału ~5,000 PLN
 - mBank IKE (eMakler) > XTB od kapitału ~5,000 PLN
 
+## Benchmark: IWDA.L (pasywny buy-and-hold)
+- CAGR: 11.72%
+- MaxDD: -24.05%
+- Wartość końcowa: 42,822 PLN
+
+Reguła GEM: strategia ma sens tylko jeśli **MaxDD strategii <= MaxDD benchmarku**.
+Optymalny deadband = najwyższy excess return nad benchmark spośród wariantów spełniających ten warunek.
+
 ## 2. Optymalny deadband
 
-| Broker | Deadband |
-|--------|----------|
-| XTB IKE | 0.068 (6.8%) |
-| BOSSA IKE (promo) | 0.068 (6.8%) |
-| mBank IKE (eMakler) | 0.068 (6.8%) |
+| Broker | Deadband | Excess CAGR |
+|--------|----------|-------------|
+| XTB IKE | 0.012 (1.2%) | +2.72% |
+| BOSSA IKE (promo) | 0.068 (6.8%) | +6.36% |
+| mBank IKE (eMakler) | 0.068 (6.8%) | +6.28% |
 
-Deadband chroni przed whipsawingiem i kompensuje koszty transakcyjne.
-Przy XTB wyższy próg jest konieczny ze względu na 1% koszt FX na rotację.
-mBank ma niższy koszt FX (0.2% round-trip), ale brak subkont walutowych
-powoduje naliczenie FX na obu nogach każdej rotacji.
+Kryterium wyboru: spośród deadbandów, których MaxDD nie przekracza MaxDD benchmarku,
+wybierany jest ten z najwyższym excess CAGR (nadwyżką nad benchmark).
 
 ## 3. Uniwersum ETF
 
-Rekomendowane: **U5**
-U5 (5 ETF-ów): Sharpe=1.13, CAGR=17.26%
+Rekomendowane: **U5_common**
+U5_common (5 ETF-ów): Sharpe=0.97, CAGR=14.44%
 
 ## 4. Walidacja Out-of-Sample
 
@@ -47,10 +53,10 @@ U5 (5 ETF-ów): Sharpe=1.13, CAGR=17.26%
 
 |   monthly_contribution |   bossa_ike_promo |   bossa_ike_standard |   mbank_ike |   taxed_account |   xtb_ike |
 |-----------------------:|------------------:|---------------------:|------------:|----------------:|----------:|
-|                      0 |           77875.9 |              73113.4 |     77182.3 |         56103.5 |   70813.4 |
-|                    500 |          119571   |             111048   |    116495   |         85547.4 |  107560   |
-|                   1000 |          161044   |             149383   |    156685   |        114991   |  144306   |
-|                   2000 |          243081   |             226597   |    237939   |        173879   |  217800   |
+|                      0 |           77875.9 |              73113.4 |     77182.3 |         46032   |   51658.3 |
+|                    500 |          119571   |             111048   |    116495   |         70150.1 |   78416.9 |
+|                   1000 |          161044   |             149383   |    156685   |         94268.3 |  105175   |
+|                   2000 |          243081   |             226597   |    237939   |        142505   |  158693   |
 
 ## Podsumowanie decyzji
 

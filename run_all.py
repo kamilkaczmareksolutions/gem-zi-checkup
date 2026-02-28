@@ -58,6 +58,20 @@ def print_header(text: str):
     print(f"\n{bar}\n  {text}\n{bar}")
 
 
+def compute_benchmark(prices: pd.DataFrame, ticker: str,
+                      initial_capital: float) -> dict:
+    """Buy-and-hold benchmark: invest initial_capital in ticker at first available date."""
+    if ticker not in prices.columns:
+        return {}
+    s = prices[ticker].dropna()
+    if s.empty:
+        return {}
+    equity = initial_capital * s / s.iloc[0]
+    m = compute_all(equity, label=f"Benchmark ({ticker})")
+    m["ticker"] = ticker
+    return m
+
+
 # ════════════════════════════════════════════════════════════════════
 #  ETAP 1 — Data contract & validation
 # ════════════════════════════════════════════════════════════════════
@@ -65,6 +79,9 @@ def print_header(text: str):
 def etap1(cfg):
     print_header("ETAP 1: Pobieranie danych i walidacja")
     tickers = all_tickers(cfg)
+    benchmark_ticker = cfg["data"].get("benchmark", "VWRL.L")
+    if benchmark_ticker not in tickers:
+        tickers.append(benchmark_ticker)
     print(f"  Tickers: {tickers}")
 
     prices = fetch_prices(
@@ -116,6 +133,15 @@ def etap2(cfg, prices, brokers):
         print(f"    Rotacje = {res.num_rotations}, Koszty = {res.total_costs:.2f}, "
               f"Podatki = {res.total_taxes:.2f}")
         print(f"    Wartość końcowa = {m['final_value']:.2f}")
+
+    # add benchmark buy-and-hold to the plot
+    bench_ticker = cfg["data"].get("benchmark", "VWRL.L")
+    if bench_ticker in prices.columns:
+        bench_s = prices[bench_ticker].dropna()
+        bench_equity = cap * bench_s / bench_s.iloc[0]
+        ax.plot(bench_equity.index, bench_equity.values,
+                label=f"Benchmark ({bench_ticker})", linewidth=2,
+                linestyle="--", color="black", alpha=0.6)
 
     ax.set_title("Baseline GEM (U5, deadband=0) — porównanie brokerów")
     ax.set_ylabel("Wartość portfela (PLN)")
@@ -178,7 +204,7 @@ def etap3(cfg, prices, brokers):
 #  ETAP 4 — Deadband calibration
 # ════════════════════════════════════════════════════════════════════
 
-def etap4(cfg, prices, brokers):
+def etap4(cfg, prices, brokers, benchmark_metrics):
     print_header("ETAP 4: Kalibracja deadbandu (statyczny + dynamiczny)")
     u5 = cfg["universes"]["U5"]
     risky = [t for t in u5["risky"] if t in prices.columns]
@@ -186,28 +212,46 @@ def etap4(cfg, prices, brokers):
     cap = cfg["portfolio"]["initial_capital_pln"]
     db_cfg = cfg["deadband"]
 
+    bench_maxdd = benchmark_metrics.get("max_drawdown", -1.0) if benchmark_metrics else -1.0
+    bench_cagr = benchmark_metrics.get("cagr", 0.0) if benchmark_metrics else 0.0
+    print(f"\n  Benchmark: CAGR={bench_cagr:.2%}, MaxDD={bench_maxdd:.2%}")
+    print(f"  Reguła: MaxDD strategii <= MaxDD benchmarku, potem max excess CAGR")
+
     deadbands = list(np.arange(
         db_cfg["static_range"][0],
         db_cfg["static_range"][1] + db_cfg["static_step"],
         db_cfg["static_step"],
     ))
 
-    # Static sweep for each broker — find optimum
     optimal = {}
     for bname, broker in brokers.items():
         df = sweep_deadbands(prices, broker, risky, safe, cap, deadbands)
+        df["excess_cagr"] = df["cagr"] - bench_cagr
 
-        best_idx = df["sharpe"].idxmax()
-        best_row = df.loc[best_idx]
+        # Filter: MaxDD must not exceed benchmark MaxDD
+        safe_df = df[df["max_drawdown"] >= bench_maxdd]  # maxdd is negative
+
+        if not safe_df.empty:
+            best_idx = safe_df["excess_cagr"].idxmax()
+            best_row = safe_df.loc[best_idx]
+            selection_note = "MaxDD <= benchmark"
+        else:
+            # No deadband passes the drawdown filter — fall back to min drawdown
+            best_idx = df["max_drawdown"].idxmax()  # least negative
+            best_row = df.loc[best_idx]
+            selection_note = "fallback: min MaxDD (none passed benchmark filter)"
+
         optimal[bname] = dict(
             deadband=best_row["deadband"],
             sharpe=best_row["sharpe"],
             cagr=best_row["cagr"],
+            excess_cagr=best_row["cagr"] - bench_cagr,
             max_drawdown=best_row["max_drawdown"],
             rotations=best_row["rotations"],
         )
-        print(f"\n  {broker.name}: optymalny deadband = {best_row['deadband']:.3f}")
-        print(f"    Sharpe = {best_row['sharpe']:.2f}, CAGR = {best_row['cagr']:.2%}, "
+        print(f"\n  {broker.name}: optymalny deadband = {best_row['deadband']:.3f} ({selection_note})")
+        print(f"    CAGR = {best_row['cagr']:.2%} (excess: {best_row['cagr'] - bench_cagr:+.2%}), "
+              f"Sharpe = {best_row['sharpe']:.2f}, "
               f"MaxDD = {best_row['max_drawdown']:.2%}, Rotacje = {int(best_row['rotations'])}")
 
     # Dynamic deadband tests
@@ -382,7 +426,7 @@ def etap6(cfg, prices, daily_prices, broker, optimal_db):
 #  ETAP 7 — Decision memo
 # ════════════════════════════════════════════════════════════════════
 
-def etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result, prices, brokers):
+def etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result, prices, brokers, benchmark_metrics=None):
     print_header("ETAP 7: Rekomendacja końcowa")
 
     cap = cfg["portfolio"]["initial_capital_pln"]
@@ -475,11 +519,13 @@ def etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result, prices, 
 
     # Generate decision memo
     _write_decision_memo(cfg, baseline_summary, optimal_dbs, universe_comp,
-                         wf_result, crossover_capitals, contrib_df, brokers)
+                         wf_result, crossover_capitals, contrib_df, brokers,
+                         benchmark_metrics)
 
 
 def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
-                         wf_result, crossover_capitals, contrib_df, brokers):
+                         wf_result, crossover_capitals, contrib_df, brokers,
+                         benchmark_metrics=None):
     cap = cfg["portfolio"]["initial_capital_pln"]
 
     # Gather baseline metrics for all IKE brokers
@@ -506,8 +552,9 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
     for bk in ike_keys:
         if bk in optimal_dbs:
             db_val = optimal_dbs[bk].get("deadband", 0.0)
+            excess = optimal_dbs[bk].get("excess_cagr", 0.0)
             label = brokers[bk].name if bk in brokers else bk
-            db_rows.append(f"| {label} | {db_val:.3f} ({db_val*100:.1f}%) |")
+            db_rows.append(f"| {label} | {db_val:.3f} ({db_val*100:.1f}%) | {excess:+.2%} |")
 
     # recommended universe
     if universe_comp is not None and not universe_comp.empty:
@@ -555,17 +602,35 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
     if not crossover_capitals:
         memo += "- Żaden alternatywny broker nie bije XTB w testowanym zakresie (lub jest lepszy od początku).\n"
 
+    # benchmark line
+    if benchmark_metrics:
+        bench_ticker = benchmark_metrics.get("ticker", "VWRL.L")
+        bench_cagr = benchmark_metrics.get("cagr", 0)
+        bench_maxdd = benchmark_metrics.get("max_drawdown", 0)
+        bench_final = benchmark_metrics.get("final_value", 0)
+        bench_section = f"""
+## Benchmark: {bench_ticker} (pasywny buy-and-hold)
+- CAGR: {bench_cagr:.2%}
+- MaxDD: {bench_maxdd:.2%}
+- Wartość końcowa: {bench_final:,.0f} PLN
+
+Reguła GEM: strategia ma sens tylko jeśli **MaxDD strategii <= MaxDD benchmarku**.
+Optymalny deadband = najwyższy excess return nad benchmark spośród wariantów spełniających ten warunek.
+"""
+    else:
+        bench_section = ""
+
+    memo += bench_section
+
     memo += f"""
 ## 2. Optymalny deadband
 
-| Broker | Deadband |
-|--------|----------|
+| Broker | Deadband | Excess CAGR |
+|--------|----------|-------------|
 {chr(10).join(db_rows)}
 
-Deadband chroni przed whipsawingiem i kompensuje koszty transakcyjne.
-Przy XTB wyższy próg jest konieczny ze względu na 1% koszt FX na rotację.
-mBank ma niższy koszt FX (0.2% round-trip), ale brak subkont walutowych
-powoduje naliczenie FX na obu nogach każdej rotacji.
+Kryterium wyboru: spośród deadbandów, których MaxDD nie przekracza MaxDD benchmarku,
+wybierany jest ten z najwyższym excess CAGR (nadwyżką nad benchmark).
 
 ## 3. Uniwersum ETF
 
@@ -641,6 +706,15 @@ def main():
     except Exception as e:
         print(f"  Nie udało się pobrać danych dziennych: {e}")
 
+    # Benchmark buy-and-hold
+    bench_ticker = cfg["data"].get("benchmark", "VWRL.L")
+    cap = cfg["portfolio"]["initial_capital_pln"]
+    benchmark_metrics = compute_benchmark(prices, bench_ticker, cap)
+    if benchmark_metrics:
+        print(f"\n  Benchmark ({bench_ticker}): CAGR={benchmark_metrics['cagr']:.2%}, "
+              f"MaxDD={benchmark_metrics['max_drawdown']:.2%}, "
+              f"Wartość końcowa={benchmark_metrics['final_value']:.0f}")
+
     # ETAP 2 — baseline
     baseline_summary = etap2(cfg, prices, brokers)
 
@@ -648,7 +722,7 @@ def main():
     all_sweep = etap3(cfg, prices, brokers)
 
     # ETAP 4 — deadband calibration
-    optimal_dbs, dyn_df = etap4(cfg, prices, brokers)
+    optimal_dbs, dyn_df = etap4(cfg, prices, brokers, benchmark_metrics)
 
     # ETAP 5 — universe expansion (use XTB as primary broker)
     primary_broker_name = "xtb_ike"
@@ -661,7 +735,7 @@ def main():
 
     # ETAP 7 — decision
     etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result,
-          prices, brokers)
+          prices, brokers, benchmark_metrics)
 
     print_header("ANALIZA ZAKOŃCZONA")
     print(f"  Wyniki zapisane w: {RESULTS}")

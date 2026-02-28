@@ -3,6 +3,7 @@ data:
   end_date: "2026-02-28"
   freq: "monthly"          # month-end adjusted close
   source: "yfinance"
+  benchmark: "IWDA.L"      # iShares MSCI World (developed markets) — passive buy-and-hold
 
 universes:
   U5:
