@@ -44,7 +44,7 @@
 
 ### Konto opodatkowane (benchmark)
 - FX na rotacjach: 0% (sprzedaż i zakup w tej samej walucie, np. USD→USD).
-- FX na wpłatach: 0.2% (PLN→USD via Walutomat/Revolut/kantor internetowy).
+- FX na wpłatach: 0.2% (PLN→USD via Walutomat).
 - Podatek: 19% od zrealizowanego zysku (podatek Belki).
 - Akcje ułamkowe: dostępne.
 - Slippage: 0.1%.

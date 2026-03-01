@@ -196,7 +196,7 @@ Odrębny jednorazowy koszt przewalutowania PLN→waluta ETF-a przy **każdej wp�
 
 **Uwaga o mBank IKE:** mBank (eMakler) oferuje 0% prowizji na ETF jako stały element oferty (nie promocja). Koszt FX wynosi 0.1% per leg. Kluczowa różnica vs BOSSA: mBank nie posiada subkont walutowych, więc przy rotacji środki wracają do PLN (sprzedaż), a następnie konwertowane są ponownie na walutę nowego ETF-a (zakup). Łączny koszt FX na rotację: 2 × 0.1% = 0.2%. BOSSA z subkontami walutowymi unika tego kosztu przy rotacjach w ramach jednej waluty.
 
-**Uwaga o rachunku opodatkowanym:** rotacje w USD nie wiążą się z FX (broker z subkontami walutowymi lub XTB). Deposit FX = 0.2% to koszt walutomatu/Revolut przy wpłacie PLN→USD.
+**Uwaga o rachunku opodatkowanym:** rotacje w USD nie wiążą się z FX (broker z subkontami walutowymi lub XTB). Deposit FX = 0.2% to koszt Walutomatu przy wpłacie PLN→USD.
 
 ### 4.4 Akcje ułamkowe vs pełne jednostki
 
