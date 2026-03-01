@@ -384,6 +384,7 @@ Wpłata (po rewaloryzacji) jest dodawana na początku każdego miesiąca. Jeśli
 4. **IB01.L ma dane tylko od 2019-02.** Strategia bazowa (U5) efektywnie operuje od ~2020-03 (po 13-miesięcznym lookbacku momentum). Wcześniejsze miesiące korzystają z CBU0.L jako jedynego safe asset.
 
 5. **Walk-forward z 4 foldami OOS.** Okno treningowe = 60 mies., testowe = 24 mies. Daje to 4 nienakładające się foldy na dostępnych danych. Mała liczba foldów ogranicza precyzję estymacji OOS, ale eliminuje overlap bias.
+6. **Uproszczony model taryf kosztowych brokerów.** Model kosztów opisany w sekcji 4 oraz w `spec_inputs.yaml` jest celowo uproszczony względem pełnych tabel opłat XTB, BOSSA i mBanku. W szczególności: (a) symulacja **nie modeluje progów prowizyjnych XTB powyżej 100k EUR/mies.** — w całym zakresie obrotu przyjmowana jest prowizja 0% przy stałym koszcie FX per leg 0,5% i z góry zadanym slippage; (b) dla mBank IKE przyjęto 0% prowizji na ETF-y (zgodnie z aktualną ofertą), koncentrując się na koszcie FX 0,1% per leg i braku subkont walutowych. Inne drobne różnice taryfowe (promocje, zmiany tabel opłat) nie są śledzone dynamicznie — model odzwierciedla reprezentatywny, uśredniony stan kosztów na potrzeby porównania strategii między brokerami.
 
 ---
 

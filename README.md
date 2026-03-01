@@ -124,6 +124,8 @@ Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance 
 | Podatek od zysku | 0% (IKE) | 0% (IKE) | 0% (IKE) | 0% (IKE) | 19% |
 | **Koszt rotacji** | **~1.2%** | **~0.2%** | **~0.78%+** | **~0.4%** | **~0.2% + podatek** |
 
+**Uproszczony model kosztów w symulacji:** Backtest używa parametrów z `spec_inputs.yaml` jako celu modelowania, ale **nie odtwarza wszystkich progów taryfowych brokerów**. W szczególności: (a) w przypadku XTB IKE przyjęto prowizję 0% niezależnie od miesięcznego obrotu (ignorując próg 100k EUR/mies. i wyższe stawki), a kluczowym kosztem transakcyjnym poza slippage jest FX per leg = 0,5%; (b) dla mBank IKE model zakłada 0% prowizji na ETF-y (zgodnie z ofertą „0% na ETF-y”), koncentrując się na koszcie FX 0,1% per leg i braku subkont walutowych. Celem jest przejrzyste porównanie strategii między brokerami bez nadmiernej zależności od szczegółowych, zmiennych progów tabel opłat.
+
 ## Testy odpornosci
 
 - **Walk-forward**: 60 mies. trening / 24 mies. test / 4 foldy (nienakl. sie okna). Sredni OOS return: 30.68% (skumulowany, 2-letni), annualizowany: 13.17%.
