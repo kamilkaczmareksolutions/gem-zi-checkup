@@ -53,6 +53,8 @@ Nie używany bezpośrednio do rekomendacji — podatny na look-ahead bias.
 Rekomendowane: **U5**
 U5 (5 ETF-ów): Sharpe=1.50, XIRR=17.98% (testowane przy IS deadband=6.8%)
 
+**Przy rekomendowanym deadband=5.4% (OOS):** U5(5 ETF-ów): Sharpe=1.49, XIRR=17.67%
+
 ## 4. Walidacja Out-of-Sample
 
 Średni OOS return per fold (skumulowany, 2-letni): 30.68%. Annualizowany: 14.31%

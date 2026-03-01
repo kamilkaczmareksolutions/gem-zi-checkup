@@ -341,7 +341,7 @@ def etap4(cfg, prices, brokers, benchmark_metrics, baseline_summary, contributio
 #  ETAP 5 — Universe expansion
 # ════════════════════════════════════════════════════════════════════
 
-def etap5(cfg, prices, broker, optimal_db, contribution_schedule):
+def etap5(cfg, prices, broker, optimal_db, contribution_schedule, recommended_db=None):
     print_header("ETAP 5: Rozszerzanie uniwersum ETF")
     cap = cfg["portfolio"]["initial_capital_pln"]
     db = optimal_db
@@ -372,7 +372,18 @@ def etap5(cfg, prices, broker, optimal_db, contribution_schedule):
     ax.grid(True, alpha=0.3)
     save_fig(fig, "universe_comparison.png")
 
-    return comp
+    comp_oos = None
+    if recommended_db is not None and recommended_db != optimal_db:
+        comp_oos = compare_universes(prices, broker, cfg["universes"], cap,
+                                     deadband=recommended_db, contribution_schedule=contribution_schedule)
+        comp_oos.to_csv(RESULTS / "universe_comparison_oos.csv", index=False)
+        print(f"\n  Deadband = {recommended_db:.3f} (OOS rekomendowany), Broker = {broker.name}")
+        for _, row in comp_oos.iterrows():
+            print(f"    {row['universe']} ({int(row['n_etfs'])} ETF): "
+                  f"XIRR={row['xirr']:.2%}, Sharpe={row['sharpe']:.2f}, "
+                  f"MaxDD={row['max_drawdown']:.2%}, Rotacje={int(row['rotations'])}")
+
+    return comp, comp_oos
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -488,7 +499,7 @@ def etap6(cfg, prices, daily_prices, broker, optimal_db, contribution_schedule,
 #  ETAP 7 — Decision memo
 # ════════════════════════════════════════════════════════════════════
 
-def etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result, prices, brokers, benchmark_metrics=None, blend_info=None):
+def etap7(cfg, baseline_summary, optimal_dbs, universe_comp, universe_comp_oos, wf_result, prices, brokers, benchmark_metrics=None, blend_info=None):
     print_header("ETAP 7: Rekomendacja końcowa")
 
     cap = cfg["portfolio"]["initial_capital_pln"]
@@ -606,11 +617,13 @@ def etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result, prices, 
 
     # Generate decision memo
     _write_decision_memo(cfg, baseline_summary, optimal_dbs, universe_comp,
+                         universe_comp_oos,
                          wf_result, crossover_capitals, contrib_df, brokers,
                          benchmark_metrics, blend_info)
 
 
 def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
+                         universe_comp_oos,
                          wf_result, crossover_capitals, contrib_df, brokers,
                          benchmark_metrics=None, blend_info=None):
     cap = cfg["portfolio"]["initial_capital_pln"]
@@ -658,6 +671,11 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
         rec_univ_detail = (f"{rec_universe} ({int(best_univ['n_etfs'])} ETF-ów): "
                            f"Sharpe={best_univ['sharpe']:.2f}, XIRR={best_univ['xirr']:.2%} "
                            f"(testowane przy IS deadband={is_db_for_display:.1%})")
+        if universe_comp_oos is not None and not universe_comp_oos.empty:
+            best_univ_oos = universe_comp_oos.loc[universe_comp_oos["sharpe"].idxmax()]
+            rec_univ_detail += (f"\n\n**Przy rekomendowanym deadband={blended_db:.1%} (OOS):** "
+                                f"{best_univ_oos['universe']}({int(best_univ_oos['n_etfs'])} ETF-ów): "
+                                f"Sharpe={best_univ_oos['sharpe']:.2f}, XIRR={best_univ_oos['xirr']:.2%}")
     else:
         rec_universe = "U5"
         rec_univ_detail = "Brak danych porównawczych."
@@ -879,13 +897,10 @@ def main():
     )
     ref_broker = brokers[ref_broker_name]
 
-    # ETAP 5 — universe expansion (use cheapest IKE as reference)
-    universe_comp = etap5(cfg, prices, ref_broker, is_optimal_db, contribution_schedule)
-
     # ETAP 6 — robustness (walk-forward, timing luck, cost sensitivity)
     wf_result = etap6(cfg, prices, daily_prices, ref_broker, is_optimal_db,
                       contribution_schedule, inflation_rates, base_contribution)
-
+    
     # ── OOS median → final recommended deadband ──
     db_cfg = cfg["deadband"]
     deadbands = list(np.arange(
@@ -926,6 +941,12 @@ def main():
     else:
         print(f"  Brak danych OOS — używany IS optymalny")
 
+    # ETAP 5 — universe expansion (use cheapest IKE as reference)
+    universe_comp, universe_comp_oos = etap5(
+        cfg, prices, ref_broker, is_optimal_db, contribution_schedule,
+        recommended_db=recommended_db,
+    )
+
     # Re-compute per-broker metrics at blended deadband
     bench_xirr_val = benchmark_metrics.get("xirr", 0.0) if benchmark_metrics else 0.0
     u5 = cfg["universes"]["U5"]
@@ -948,8 +969,8 @@ def main():
         )
 
     # ETAP 7 — decision
-    etap7(cfg, baseline_summary, optimal_dbs, universe_comp, wf_result,
-          prices, brokers, benchmark_metrics, blend_info)
+    etap7(cfg, baseline_summary, optimal_dbs, universe_comp, universe_comp_oos,
+          wf_result, prices, brokers, benchmark_metrics, blend_info)
 
     print_header("ANALIZA ZAKOŃCZONA")
     print(f"  Wyniki zapisane w: {RESULTS}")
