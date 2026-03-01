@@ -142,9 +142,9 @@ portfolio:
 # Cached locally in data_cache/cpi_annual_cache.json
 
 walk_forward:
-  train_months: 36          # 3 years training (shorter for limited data)
-  test_months: 12           # 1 year test
-  step_months: 12           # rolling step
+  train_months: 60          # 5 years training
+  test_months: 24           # 2 year test
+  step_months: 24           # rolling step
 
 rebalance_days:
   - 1                       # 1st business day of month

@@ -646,7 +646,7 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
         rec_reason = "Brak danych porównawczych."
 
     # Blended deadband — single value for all brokers
-    blended_db = blend_info["blended_snapped"] if blend_info else 0.03
+    blended_db = blend_info["recommended_snapped"] if blend_info else 0.03
     is_opt = blend_info["is_optimal"] if blend_info else blended_db
     oos_avg = blend_info.get("oos_avg") if blend_info else None
     oos_median = blend_info.get("oos_median") if blend_info else None
@@ -676,7 +676,7 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
     # OOS validation
     if wf_result and "folds" in wf_result and not wf_result["folds"].empty:
         avg_oos_ret = wf_result["folds"]["oos_return"].mean()
-        oos_note = f"Średni OOS return per fold: {avg_oos_ret:.2%}."
+        oos_note = f"Średni OOS return per fold (skumulowany, 2-letni): {avg_oos_ret:.2%}. Annualizowany: {(1 + avg_oos_ret)**0.5 - 1:.2%}"
         if blend_info and blend_info.get("oos_deadbands"):
             oos_note += f"\nWybrane deadbandy per fold: {[f'{d:.3f}' for d in blend_info['oos_deadbands']]}"
     else:
@@ -728,7 +728,7 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
 
     # Blend methodology section
     blend_section = f"""
-## 2. Optymalny deadband — metodologia blend IS + OOS
+## 2. Optymalny deadband
 
 **Wynik: deadband = {blended_db:.3f} ({blended_db*100:.1f}%)** (jednakowy dla wszystkich brokerów)
 
@@ -740,12 +740,8 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
     if oos_avg is not None:
         blend_section += f"""3. **OOS średnia** (walk-forward): {oos_avg:.3f} ({oos_avg*100:.1f}%)
 4. **OOS mediana** (walk-forward): {oos_median:.3f} ({oos_median*100:.1f}%)
-5. **Blend** = (IS optymalny + OOS średnia) / 2 = ({is_opt:.3f} + {oos_avg:.3f}) / 2 = {blend_info['blended_raw']:.4f}
+5. **Rekomendowany deadband** = {blend_info['recommended_raw']:.4f}
    → zaokrąglony do siatki: **{blended_db:.3f} ({blended_db*100:.1f}%)**
-
-Dlaczego blend: sam IS optymalny ({is_opt*100:.1f}%) jest podatny na overfitting do danych
-historycznych. OOS średnia ({oos_avg*100:.1f}%) pokazuje, co faktycznie wybiera walk-forward
-na nowych danych. Uśrednienie daje kompromis odporny na overfitting.
 """
     else:
         blend_section += "\nBrak danych OOS — użyty IS optymalny bez korekty.\n"
@@ -811,7 +807,7 @@ Kapitał startowy = 0 PLN.
 ## Podsumowanie decyzji
 
 1. **Wybierz brokera** wg powyższej tabeli kosztowej i progu crossover.
-2. **Ustaw deadband** na **{blended_db*100:.1f}%** (blend IS + OOS, odporny na overfitting).
+2. **Ustaw deadband** na **{blended_db*100:.1f}%**.
 3. **Rozważ rozszerzenie koszyka** jeśli dane OOS to potwierdzają.
 4. **Regularnie wpłacaj** — nawet małe kwoty znacząco podnoszą wartość końcową dzięki procentowi składanemu w parasolu IKE.
 """
@@ -900,7 +896,7 @@ def main():
     wf_result = etap6(cfg, prices, daily_prices, ref_broker, is_optimal_db,
                       contribution_schedule, inflation_rates, base_contribution)
 
-    # ── Blend IS + OOS → final recommended deadband ──
+    # ── OOS median → final recommended deadband ──
     db_cfg = cfg["deadband"]
     deadbands = list(np.arange(
         db_cfg["static_range"][0],
@@ -912,31 +908,31 @@ def main():
     if oos_dbs:
         oos_avg = float(np.mean(oos_dbs))
         oos_median = float(np.median(oos_dbs))
-        blended_raw = (is_optimal_db + oos_avg) / 2
-        blended_db = float(min(deadbands, key=lambda x: abs(x - blended_raw)))
+        recommended_raw = oos_median
+        recommended_db = float(min(deadbands, key=lambda x: abs(x - recommended_raw)))
     else:
         oos_avg = None
         oos_median = None
-        blended_raw = is_optimal_db
-        blended_db = is_optimal_db
+        recommended_raw = is_optimal_db
+        recommended_db = is_optimal_db
 
     blend_info = dict(
         is_optimal=is_optimal_db,
         oos_avg=oos_avg,
         oos_median=oos_median,
-        blended_raw=blended_raw,
-        blended_snapped=blended_db,
+        recommended_raw=recommended_raw,
+        recommended_snapped=recommended_db,
         ref_broker=ref_broker_name,
         ref_broker_name=ref_broker.name,
         oos_deadbands=oos_dbs,
     )
 
-    print(f"\n  ── Blend IS + OOS ──")
+    print(f"\n  ── Rekomendowany deadband (OOS mediana) ──")
     print(f"  IS optymalny (z {ref_broker.name}): {is_optimal_db:.3f} ({is_optimal_db*100:.1f}%)")
     if oos_avg is not None:
         print(f"  OOS średnia: {oos_avg:.3f} ({oos_avg*100:.1f}%)")
         print(f"  OOS mediana: {oos_median:.3f} ({oos_median*100:.1f}%)")
-        print(f"  Blend (IS + OOS avg) / 2: {blended_raw:.4f} → snapped: {blended_db:.3f} ({blended_db*100:.1f}%)")
+        print(f"  Rekomendowany deadband: {recommended_db:.3f} ({recommended_db*100:.1f}%)")
     else:
         print(f"  Brak danych OOS — używany IS optymalny")
 
@@ -947,13 +943,13 @@ def main():
     safe = [t for t in u5["safe"] if t in prices.columns]
 
     for bname, broker in brokers.items():
-        res = run_gem(prices, broker, risky, safe, cap, deadband=blended_db,
+        res = run_gem(prices, broker, risky, safe, cap, deadband=recommended_db,
                       contribution_schedule=contribution_schedule)
         m = compute_all(res.equity, label=bname,
                         initial_capital=cap,
                         contribution_schedule=contribution_schedule)
         optimal_dbs[bname] = dict(
-            deadband=blended_db,
+            deadband=recommended_db,
             sharpe=m["sharpe"],
             xirr=m["xirr"],
             excess_xirr=m["xirr"] - bench_xirr_val,

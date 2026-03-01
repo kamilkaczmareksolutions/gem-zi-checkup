@@ -26,30 +26,26 @@ Przy kapitale 0 PLN, najlepszy wynik końcowy daje BOSSA IKE (promo) (XTB IKE=42
 - MaxDD: -20.23%
 - Wartość końcowa: 470,059 PLN
 
-## 2. Optymalny deadband — metodologia blend IS + OOS
+## 2. Optymalny deadband
 
-**Wynik: deadband = 0.046 (4.6%)** (jednakowy dla wszystkich brokerów)
+**Wynik: deadband = 0.054 (5.4%)** (jednakowy dla wszystkich brokerów)
 
 ### Jak obliczono:
 1. **Broker referencyjny**: BOSSA IKE (promo) (najtańszy IKE — najniższe tarcia kosztowe)
 2. **IS optymalny** (in-sample): 0.068 (6.8%) — najwyższy excess XIRR
    spośród deadbandów, których MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku + 10% margin
-3. **OOS średnia** (walk-forward): 0.024 (2.4%)
-4. **OOS mediana** (walk-forward): 0.014 (1.4%)
-5. **Blend** = (IS optymalny + OOS średnia) / 2 = (0.068 + 0.024) / 2 = 0.0462
-   → zaokrąglony do siatki: **0.046 (4.6%)**
+3. **OOS średnia** (walk-forward): 0.056 (5.6%)
+4. **OOS mediana** (walk-forward): 0.053 (5.3%)
+5. **Rekomendowany deadband** = 0.0530
+   → zaokrąglony do siatki: **0.054 (5.4%)**
 
-Dlaczego blend: sam IS optymalny (6.8%) jest podatny na overfitting do danych
-historycznych. OOS średnia (2.4%) pokazuje, co faktycznie wybiera walk-forward
-na nowych danych. Uśrednienie daje kompromis odporny na overfitting.
-
-### Wyniki per broker @ deadband = 0.046
+### Wyniki per broker @ deadband = 0.054
 
 | Broker | Excess XIRR | MaxDD | Sharpe |
 |--------|-------------|-------|--------|
-| XTB IKE | +0.59% | -21.93% | 1.44 |
-| BOSSA IKE (promo) | +1.67% | -21.14% | 1.46 |
-| mBank IKE (eMakler) | +1.40% | -21.23% | 1.46 |
+| XTB IKE | +2.24% | -22.25% | 1.47 |
+| BOSSA IKE (promo) | +3.05% | -21.40% | 1.49 |
+| mBank IKE (eMakler) | +2.85% | -21.48% | 1.49 |
 
 ## 3. Uniwersum ETF
 
@@ -58,8 +54,8 @@ U5 (5 ETF-ów): Sharpe=1.50, XIRR=15.62% (testowane przy IS deadband=6.8%)
 
 ## 4. Walidacja Out-of-Sample
 
-Średni OOS return per fold: 14.64%.
-Wybrane deadbandy per fold: ['0.000', '0.000', '0.050', '0.014', '0.054', '0.014', '0.000', '0.068', '0.068', '0.000', '0.000']
+Średni OOS return per fold (skumulowany, 2-letni): 30.68%. Annualizowany: 14.31%
+Wybrane deadbandy per fold: ['0.050', '0.052', '0.054', '0.068']
 
 ## 5. Scenariusze z regularnymi wpłatami (kapitał startowy = 0, CPI rewaloryzacja)
 
@@ -70,9 +66,9 @@ Kapitał startowy = 0 PLN.
 
 |   wpłata bazowa (PLN/mies.) |   bossa_ike_promo |   bossa_ike_standard |   mbank_ike |   taxed_account |   xtb_ike |
 |----------------------------:|------------------:|---------------------:|------------:|----------------:|----------:|
-|                         500 |           251,160 |              231,015 |     245,863 |         211,205 |   237,029 |
-|                        1000 |           515,400 |              480,555 |     505,529 |         422,410 |   474,059 |
-|                        2000 |         1,037,773 |              973,512 |   1,017,331 |         844,820 |   948,117 |
+|                         500 |           278,038 |              259,085 |     273,710 |         234,536 |   268,961 |
+|                        1000 |           573,722 |              540,007 |     564,323 |         469,073 |   537,922 |
+|                        2000 |         1,157,599 |            1,096,133 |   1,138,800 |         938,144 | 1,075,843 |
 
 ### Suma wpłat i rewaloryzacja
 
@@ -86,6 +82,6 @@ Kapitał startowy = 0 PLN.
 ## Podsumowanie decyzji
 
 1. **Wybierz brokera** wg powyższej tabeli kosztowej i progu crossover.
-2. **Ustaw deadband** na **4.6%** (blend IS + OOS, odporny na overfitting).
+2. **Ustaw deadband** na **5.4%**.
 3. **Rozważ rozszerzenie koszyka** jeśli dane OOS to potwierdzają.
 4. **Regularnie wpłacaj** — nawet małe kwoty znacząco podnoszą wartość końcową dzięki procentowi składanemu w parasolu IKE.
