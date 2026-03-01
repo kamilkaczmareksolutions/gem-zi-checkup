@@ -187,7 +187,7 @@ Odrębny jednorazowy koszt przewalutowania PLN→waluta ETF-a przy **każdej wp�
 | Slippage | 0.10% | 0.10% | 0.10% | 0.10% | 0.10% |
 | Frakcje | TAK | NIE | NIE | NIE | TAK |
 | Podatek | 0% (IKE) | 0% (IKE) | 0% (IKE) | 0% (IKE) | 19% od zysku |
-| Subkonta walut. | — | TAK | TAK | NIE | TAK (Walutomat) |
+| Subkonta walut. | NIE | TAK | TAK | NIE | TAK (Walutomat) |
 | **Koszt round-trip** | **~1.2%** | **~0.2%** | **~0.78%+** | **~0.4%** | **~0.2% + podatek** |
 
 **Uwaga o XTB IKE:** XTB ma wbudowane 0.5% FX per leg, które jest naliczane przy każdej transakcji (spread walutowy), ale nie ma osobnego kosztu wpłaty — PLN→USD odbywa się automatycznie jako część zlecenia.
