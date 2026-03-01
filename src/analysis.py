@@ -317,17 +317,34 @@ def walk_forward(
             except Exception:
                 continue
 
-        # evaluate on full window (train+test) with selected deadband
+                # evaluate on full window (train+test) with selected deadband
         try:
             full_res = run_gem(full_prices, broker, risky, safe,
                                initial_capital, deadband=best_db,
                                contribution_schedule=contribution_schedule)
-            # extract only the OOS (test) portion by date
             test_equity = full_res.equity.loc[test_start_date:test_end_date]
+
             if len(test_equity) > 1 and test_equity.iloc[0] > 0:
                 oos_equities.append(test_equity)
                 oos_selected_dbs.append(best_db)
-                oos_ret = test_equity.iloc[-1] / test_equity.iloc[0] - 1
+
+                # OOS bez wpłat, z historią lookback dla momentum
+                lookback_needed = 14
+                lookback_start = max(start, train_end - lookback_needed)
+                test_with_history = prices.iloc[lookback_start:test_end]
+                test_start_capital = test_equity.iloc[0]
+
+                test_res = run_gem(test_with_history, broker, risky, safe,
+                                   initial_capital=test_start_capital,
+                                   deadband=best_db,
+                                   contribution_schedule=None)
+
+                test_res_oos = test_res.equity.loc[test_start_date:test_end_date]
+                if len(test_res_oos) > 1 and test_res_oos.iloc[0] > 0:
+                    oos_ret = test_res_oos.iloc[-1] / test_res_oos.iloc[0] - 1
+                else:
+                    oos_ret = 0.0
+
                 fold_records.append(dict(
                     fold=fold,
                     train_start=train_start_date,
@@ -337,8 +354,8 @@ def walk_forward(
                     selected_db=best_db,
                     oos_return=oos_ret,
                 ))
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"  Fold {fold} ERROR: {e}")
 
         start += step_months
         fold += 1

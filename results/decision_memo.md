@@ -58,7 +58,7 @@ U5 (5 ETF-ów): Sharpe=1.50, XIRR=15.62% (testowane przy IS deadband=6.8%)
 
 ## 4. Walidacja Out-of-Sample
 
-Średni OOS return per fold: 59.61%.
+Średni OOS return per fold: 14.64%.
 Wybrane deadbandy per fold: ['0.000', '0.000', '0.050', '0.014', '0.054', '0.014', '0.000', '0.068', '0.068', '0.000', '0.000']
 
 ## 5. Scenariusze z regularnymi wpłatami (kapitał startowy = 0, CPI rewaloryzacja)
