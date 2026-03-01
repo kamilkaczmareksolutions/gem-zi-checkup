@@ -6,9 +6,9 @@ Ilosciowa analiza zmodyfikowanej strategii **Global Equity Momentum (GEM)** w ko
 
 Strategia GEM to algorytm rotacyjny: co miesiac wrzucasz 100% kapitalu w jeden ETF - ten, ktory ma najsilniejszy trend (momentum). Gdy rynki spadaja, algorytm automatycznie przenosi kapital do obligacji.
 
-Problem w tym, ze czysta teoria nie uwzglednia **realnych kosztow**: przewalutowania (XTB inkasuje 0.5% na kazdej konwersji PLN/USD), brak akcji ulamkowych (BOSSA, mBank), podatek Belki, slippage. Ten projekt odpowiada na konkretne pytania:
+Problem w tym, ze czysta teoria nie uwzglednia **realnych kosztow**: przewalutowania (XTB inkasuje 0.5% na kazdej konwersji PLN/USD), brak akcji ulamkowych (BOSSA, mBank eMakler), podatek Belki, slippage. Ten projekt odpowiada na konkretne pytania:
 
-1. **XTB IKE, BOSSA IKE czy mBank IKE?** -- co jest lepsze dla strategii rotacyjnej przy regularnych wplatach (DCA)?
+1. **XTB IKE, BOSSA IKE czy mBank eMakler IKE?** -- co jest lepsze dla strategii rotacyjnej przy regularnych wplatach (DCA)?
 2. **Jaki deadband (prog rotacji)?** -- o ile punktow procentowych nowy ETF musi bic obecny, zeby rotacja sie oplacala po kosztach?
 3. **Czy dodawac nowe ETF-y** (zloto, small capy, REITs, Europa ex-US)?
 
@@ -16,10 +16,10 @@ Problem w tym, ze czysta teoria nie uwzglednia **realnych kosztow**: przewalutow
 
 | Pytanie | Odpowiedz | Dowod |
 |---------|-----------|-------|
-| Broker | **BOSSA IKE (promo)** | XIRR 17.98% vs XTB 17.25% vs mBank 17.79% (DCA 1000 PLN/mies.) |
+| Broker | **BOSSA IKE (promo)** | XIRR 17.98% vs XTB IKE 17.25% vs mBank eMakler IKE 17.79% (DCA 1000 PLN/mies.) |
 | Deadband | **5.4%** (mediana OOS) | IS=6.8%, OOS mediana=5.3%, snap do siatki → 5.4% |
 | Wiecej ETF-ow | **Nie** | U5 (Sharpe 1.50) > U7 (1.46) > U9 (1.48); U5 najlepszy XIRR |
-| mBank vs BOSSA | **BOSSA lepsza** | 0% FX (subkonta) > 0.2% FX mBank; ale mBank 0% prowizji na stale |
+| mBank eMalker vs BOSSA | **BOSSA lepsza** | 0% FX (subkonta) > 0.2% FX mBank eMakler; ale mBank eMakler 0% prowizji na stale |
 | Rachunek opodatkowany | **Katastrofa** | XIRR 15.24% vs ~18% IKE (podatek Belki niszczy strategie rotacyjna) |
 
 ## Koszyk ETF (U5)
@@ -62,7 +62,7 @@ Co miesiac:
 │   ├── config.py            # Ladowanie YAML
 │   ├── data.py              # Pobieranie danych z Yahoo Finance + CPI z GUS API + build_contribution_schedule
 │   ├── momentum.py          # Momentum 13-1 + dual momentum (selekcja celu)
-│   ├── broker.py            # Modele kosztowe: XTB, BOSSA, mBank, rachunek opodatkowany
+│   ├── broker.py            # Modele kosztowe: XTB, BOSSA, mBank eMakler, rachunek opodatkowany
 │   ├── backtest.py          # Glowna petla symulacji (kupno/sprzedaz/koszty/podatki)
 │   ├── metrics.py           # XIRR, Sharpe, Sortino, MaxDD, Calmar
 │   └── analysis.py          # Sweep deadbandow, walk-forward, timing luck
@@ -109,7 +109,7 @@ Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance 
 | 4 | Kalibracja IS (najtanszy IKE, MaxDD + 10% margin) | IS optymalny deadband |
 | 6 | Walk-forward (4 foldy OOS), timing luck, czulosc FX | Walidacja odpornosci, mediana OOS |
 | 5 | Porownanie koszykow U5 / U7 / U9 (IS + OOS deadband) | Czy dodawac ETF-y |
-| 7 | Scenariusze z wplatami, crossover XTB/BOSSA/mBank | `decision_memo.md` |
+| 7 | Scenariusze z wplatami, crossover XTB/BOSSA/ mBank eMakler | `decision_memo.md` |
 
 ## Modele brokerow
 
@@ -124,7 +124,7 @@ Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance 
 | Podatek od zysku | 0% (IKE) | 0% (IKE) | 0% (IKE) | 0% (IKE) | 19% |
 | **Koszt rotacji** | **~1.2%** | **~0.2%** | **~0.78%+** | **~0.4%** | **~0.2% + podatek** |
 
-**Uproszczony model kosztów w symulacji:** Backtest używa parametrów z `spec_inputs.yaml` jako celu modelowania, ale **nie odtwarza wszystkich progów taryfowych brokerów**. W szczególności: (a) w przypadku XTB IKE przyjęto prowizję 0% niezależnie od miesięcznego obrotu (ignorując próg 100k EUR/mies. i wyższe stawki), a kluczowym kosztem transakcyjnym poza slippage jest FX per leg = 0,5%; (b) dla mBank IKE model zakłada 0% prowizji na ETF-y (zgodnie z ofertą „0% na ETF-y”), koncentrując się na koszcie FX 0,1% per leg i braku subkont walutowych. Celem jest przejrzyste porównanie strategii między brokerami bez nadmiernej zależności od szczegółowych, zmiennych progów tabel opłat.
+**Uproszczony model kosztów w symulacji:** Backtest używa parametrów z `spec_inputs.yaml` jako celu modelowania, ale **nie odtwarza wszystkich progów taryfowych brokerów**. W szczególności: (a) w przypadku XTB IKE przyjęto prowizję 0% niezależnie od miesięcznego obrotu (ignorując próg 100k EUR/mies. i wyższe stawki), a kluczowym kosztem transakcyjnym poza slippage jest FX per leg = 0,5%; (b) dla mBank eMakler IKE model zakłada 0% prowizji na ETF-y (zgodnie z ofertą „0% na ETF-y”), koncentrując się na koszcie FX 0,1% per leg i braku subkont walutowych. Celem jest przejrzyste porównanie strategii między brokerami bez nadmiernej zależności od szczegółowych, zmiennych progów tabel opłat.
 
 ## Testy odpornosci
 
