@@ -413,6 +413,8 @@ def timing_luck_test(
     When contribution_schedule is provided, a new schedule is built for
     the resampled dates using the same base amount and inflation rates.
     """
+    from .data import build_contribution_schedule
+
     rows = []
     for offset in offsets:
         try:
@@ -422,7 +424,6 @@ def timing_luck_test(
             # Rebuild contribution schedule for resampled dates
             sched = None
             if base_contribution > 0 and inflation_rates:
-                from run_all import build_contribution_schedule
                 sched = build_contribution_schedule(base_contribution, monthly.index, inflation_rates)
             res = run_gem(monthly, broker, risky, safe, initial_capital, deadband=deadband,
                           contribution_schedule=sched)
@@ -438,14 +439,19 @@ def timing_luck_test(
 
 
 def _resample_nth_bday(df: pd.DataFrame, n: int) -> pd.DataFrame:
-    """Pick the Nth business day of each month from a daily DataFrame."""
+    """Pick the Nth business day of each month from a daily DataFrame.
+
+    If a month has fewer than n+1 business days, the last business day
+    of that month is selected instead.
+    """
     df = df.copy()
     df.index = pd.to_datetime(df.index)
     groups = df.groupby([df.index.year, df.index.month])
     selected = []
     for _, grp in groups:
-        if len(grp) > n:
-            selected.append(grp.iloc[n])
+        if not grp.empty:
+            idx = min(n, len(grp) - 1)
+            selected.append(grp.iloc[idx])
     if not selected:
         return pd.DataFrame()
     return pd.DataFrame(selected)

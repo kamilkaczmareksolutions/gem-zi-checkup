@@ -32,8 +32,9 @@ Przy kapitale 0 PLN, najlepszy wynik końcowy daje BOSSA IKE (promo) (XTB IKE=42
 
 ### Jak obliczono:
 1. **Broker referencyjny**: BOSSA IKE (promo) (najtańszy IKE — najniższe tarcia kosztowe)
-2. **IS optymalny** (in-sample): 0.068 (6.8%) — najwyższy excess XIRR
-   spośród deadbandów, których MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku + 10% margin
+2. **IS optymalny** (informacyjnie): 0.068 (6.8%) — górna granica rozsądnego deadbandu;
+najwyższy excess XIRR spośród deadbandów, których MaxDD nie przekracza MaxDD benchmarku + 10% margin.
+Nie używany bezpośrednio do rekomendacji — podatny na look-ahead bias.
 3. **OOS średnia** (walk-forward): 0.056 (5.6%)
 4. **OOS mediana** (walk-forward): 0.053 (5.3%)
 5. **Rekomendowany deadband** = 0.0530
@@ -41,16 +42,16 @@ Przy kapitale 0 PLN, najlepszy wynik końcowy daje BOSSA IKE (promo) (XTB IKE=42
 
 ### Wyniki per broker @ deadband = 0.054
 
-| Broker | Excess XIRR | MaxDD | Sharpe |
+| Broker | Excess XIRR | MaxDD | Sharpe (IS) |
 |--------|-------------|-------|--------|
-| XTB IKE | +2.24% | -22.25% | 1.47 |
-| BOSSA IKE (promo) | +3.05% | -21.40% | 1.49 |
-| mBank IKE (eMakler) | +2.85% | -21.48% | 1.49 |
+| XTB IKE | +4.51% | -22.25% | 1.47 |
+| BOSSA IKE (promo) | +5.40% | -21.40% | 1.49 |
+| mBank IKE (eMakler) | +5.18% | -21.48% | 1.49 |
 
 ## 3. Uniwersum ETF
 
 Rekomendowane: **U5**
-U5 (5 ETF-ów): Sharpe=1.50, XIRR=15.62% (testowane przy IS deadband=6.8%)
+U5 (5 ETF-ów): Sharpe=1.50, XIRR=17.98% (testowane przy IS deadband=6.8%)
 
 ## 4. Walidacja Out-of-Sample
 

@@ -172,3 +172,27 @@ def load_cpi_annual(min_year: int = 2000, max_year: int = 2025) -> dict[int, flo
                 combined[y] = combined[last_known]
 
     return {y: combined[y] for y in years if y in combined}
+
+
+def build_contribution_schedule(
+    base_amount: float,
+    dates: pd.DatetimeIndex,
+    inflation_rates: dict[int, float],
+) -> pd.Series:
+    """Build monthly contribution schedule with annual CPI revalorization.
+
+    At the start of each calendar year, the contribution is adjusted by the
+    PREVIOUS year's average annual CPI (GUS wskaźnik średnioroczny).
+    """
+    amounts = []
+    current_amount = base_amount
+    current_year = dates[0].year
+
+    for dt in dates:
+        if dt.year > current_year:
+            prev_year_cpi = inflation_rates.get(dt.year - 1, 0.0)
+            current_amount *= (1 + prev_year_cpi)
+            current_year = dt.year
+        amounts.append(round(current_amount, 2))
+
+    return pd.Series(amounts, index=dates, name="contribution")

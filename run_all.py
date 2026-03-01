@@ -25,7 +25,13 @@ import numpy as np
 import pandas as pd
 
 from src.config import load_config, all_tickers, ROOT
-from src.data import fetch_prices, validate_prices, common_window, load_cpi_annual
+from src.data import (
+    fetch_prices,
+    validate_prices,
+    common_window,
+    load_cpi_annual,
+    build_contribution_schedule,
+)
 from src.broker import make_broker, BrokerModel
 from src.backtest import run_gem
 from src.metrics import compute_all, xirr, sharpe, max_drawdown, build_cashflows
@@ -58,28 +64,6 @@ def print_header(text: str):
     print(f"\n{bar}\n  {text}\n{bar}")
 
 
-def build_contribution_schedule(
-    base_amount: float,
-    dates: pd.DatetimeIndex,
-    inflation_rates: dict[int, float],
-) -> pd.Series:
-    """Build monthly contribution schedule with annual CPI revalorization.
-
-    At the start of each calendar year, the contribution is adjusted by the
-    PREVIOUS year's average annual CPI (GUS wskaźnik średnioroczny).
-    """
-    amounts = []
-    current_amount = base_amount
-    current_year = dates[0].year
-
-    for dt in dates:
-        if dt.year > current_year:
-            prev_year_cpi = inflation_rates.get(dt.year - 1, 0.0)
-            current_amount *= (1 + prev_year_cpi)
-            current_year = dt.year
-        amounts.append(round(current_amount, 2))
-
-    return pd.Series(amounts, index=dates, name="contribution")
 
 
 def compute_benchmark(prices: pd.DataFrame, ticker: str,
@@ -427,8 +411,9 @@ def etap6(cfg, prices, daily_prices, broker, optimal_db, contribution_schedule,
             oos_m = compute_all(wf["oos_equity"], label="OOS")
             fold_rets = wf["folds"]["oos_return"]
             honest_sharpe = fold_rets.mean() / fold_rets.std() if fold_rets.std() > 0 else 0.0
+            honest_mdd = wf["folds"]["oos_return"].min()
             print(f"\n    OOS stitched: Sharpe={honest_sharpe:.2f},"
-                  f" MaxDD={oos_m['max_drawdown']:.2%}")
+                  f" MaxDD(worst fold)={honest_mdd:.2%}")
 
             fig, ax = plt.subplots(figsize=(12, 5))
             ax.plot(wf["oos_equity"].index, wf["oos_equity"].values, linewidth=1.5)
@@ -738,8 +723,9 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
 
 ### Jak obliczono:
 1. **Broker referencyjny**: {ref_broker_label} (najtańszy IKE — najniższe tarcia kosztowe)
-2. **IS optymalny** (in-sample): {is_opt:.3f} ({is_opt*100:.1f}%) — najwyższy excess XIRR
-   spośród deadbandów, których MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku + 10% margin
+2. **IS optymalny** (informacyjnie): {is_opt:.3f} ({is_opt*100:.1f}%) — górna granica rozsądnego deadbandu;
+najwyższy excess XIRR spośród deadbandów, których MaxDD nie przekracza MaxDD benchmarku + 10% margin.
+Nie używany bezpośrednio do rekomendacji — podatny na look-ahead bias.
 """
     if oos_avg is not None:
         blend_section += f"""3. **OOS średnia** (walk-forward): {oos_avg:.3f} ({oos_avg*100:.1f}%)
@@ -753,7 +739,7 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
     blend_section += f"""
 ### Wyniki per broker @ deadband = {blended_db:.3f}
 
-| Broker | Excess XIRR | MaxDD | Sharpe |
+| Broker | Excess XIRR | MaxDD | Sharpe (IS) |
 |--------|-------------|-------|--------|
 {chr(10).join(db_rows)}
 

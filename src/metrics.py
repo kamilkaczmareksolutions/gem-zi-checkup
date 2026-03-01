@@ -26,8 +26,11 @@ def build_cashflows(
         flows[dt0] = flows.get(dt0, 0.0) - initial_capital
 
     if contribution_schedule is not None:
+        # Only include contributions that actually entered the backtest
+        # (i.e. those starting from the first equity curve date)
+        start_dt = equity.index[0]
         for dt, amt in contribution_schedule.items():
-            if dt in equity.index or dt <= equity.index[-1]:
+            if start_dt <= dt <= equity.index[-1]:
                 flows[dt] = flows.get(dt, 0.0) - amt
 
     dt_end = equity.index[-1]
