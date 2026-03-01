@@ -19,7 +19,7 @@ Problem w tym, ze czysta teoria nie uwzglednia **realnych kosztow**: przewalutow
 | Broker | **BOSSA IKE (promo)** | XIRR 17.98% vs XTB IKE 17.25% vs mBank eMakler IKE 17.79% (DCA 1000 PLN/mies.) |
 | Deadband | **5.4%** (mediana OOS) | IS=6.8%, OOS mediana=5.3%, snap do siatki → 5.4% |
 | Wiecej ETF-ow | **Nie** | U5 (Sharpe 1.50) > U7 (1.46) > U9 (1.48); U5 najlepszy XIRR |
-| mBank eMalker vs BOSSA | **BOSSA lepsza** | 0% FX (subkonta) > 0.2% FX mBank eMakler; ale mBank eMakler 0% prowizji na stale |
+| mBank eMaklker vs BOSSA | **BOSSA lepsza** | 0% FX (subkonta) > 0.2% FX mBank eMakler; ale mBank eMakler 0% prowizji na stale |
 | Rachunek opodatkowany | **Katastrofa** | XIRR 15.24% vs ~18% IKE (podatek Belki niszczy strategie rotacyjna) |
 
 ## Koszyk ETF (U5)
