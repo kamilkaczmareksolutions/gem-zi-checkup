@@ -117,7 +117,7 @@ Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance 
 |----------|--------:|------------:|---------------:|----------:|-------------:|
 | FX per leg (rotacja) | 0.50% | 0.00% | 0.00% | 0.10% | 0.00% |
 | FX na wplatach | -- | 0.10% | 0.10% | -- | 0.20% (Walutomat) |
-| Prowizja | 0% | 0% (promo) | 0.29% (min 14 PLN) | 0% (stale) | 0% |
+| Prowizja | 0% | 0% (promocja) | 0.29% (min 14 PLN) | 0% (stale) | 0% |
 | Slippage | 0.10% | 0.10% | 0.10% | 0.10% | 0.10% |
 | Akcje ulamkowe | TAK | NIE | NIE | NIE | TAK |
 | Subkonta walut. | NIE | TAK | TAK | NIE | TAK (Walutomat) |
