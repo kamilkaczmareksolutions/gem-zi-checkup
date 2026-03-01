@@ -273,8 +273,8 @@ def walk_forward(
 ) -> dict:
     """Rolling-window walk-forward: select best deadband on train, evaluate on test.
 
-    Uses date-based slicing so that equity curves align correctly even when
-    the backtest starts later than the price window (due to momentum lookback).
+    OOS return = czysty zwrot rynkowy (lump sum, bez wpłat) na oknie testowym.
+    Eliminuje artefakt wpłat z oos_return przy DCA.
     """
     from .metrics import sharpe as calc_sharpe
 
@@ -285,6 +285,8 @@ def walk_forward(
     oos_selected_dbs: list[float] = []
     fold_records = []
 
+    LOOKBACK = 14  # miesiące historii potrzebne na momentum 13-1
+
     start = 0
     fold = 0
     while start + train_months + test_months <= total_months:
@@ -292,7 +294,6 @@ def walk_forward(
         test_end = min(train_end + test_months, total_months)
 
         train_prices = prices.iloc[start:train_end]
-        # for the test run, include history from start so momentum has lookback
         full_prices = prices.iloc[start:test_end]
 
         train_start_date = dates[start]
@@ -300,8 +301,7 @@ def walk_forward(
         test_start_date = dates[train_end]
         test_end_date = dates[test_end - 1]
 
-
-        # select best deadband on training window
+        # ── 1. Wybór najlepszego deadbandu na oknie treningowym (z DCA) ──
         best_db = deadbands[0] if deadbands else 0.0
         best_sharpe = -np.inf
         for db in deadbands:
@@ -318,22 +318,36 @@ def walk_forward(
             except Exception:
                 continue
 
-                # evaluate on full window (train+test) with selected deadband
+        # ── 2. Stitched equity (DCA) — do wykresu ──
         try:
             full_res = run_gem(full_prices, broker, risky, safe,
                                initial_capital, deadband=best_db,
                                contribution_schedule=contribution_schedule)
-            test_equity = full_res.equity.loc[test_start_date:test_end_date]
+            test_equity_dca = full_res.equity.loc[test_start_date:test_end_date]
 
-            if len(test_equity) > 1 and test_equity.iloc[0] > 0:
-                oos_equities.append(test_equity)
+            if len(test_equity_dca) > 1 and test_equity_dca.iloc[0] > 0:
+                oos_equities.append(test_equity_dca)
                 oos_selected_dbs.append(best_db)
 
-                oos_ret_from_full = test_equity.iloc[-1] / test_equity.iloc[0] - 1
+                # ── 3. OOS return — lump sum BEZ wpłat (czysty sygnał) ──
+                # Użyj kapitału z końca treningu jako lump sum.
+                # Daj lookback historii żeby momentum miało dane.
+                lookback_start = max(start, train_end - LOOKBACK)
+                test_with_history = prices.iloc[lookback_start:test_end]
+                lump_sum_capital = test_equity_dca.iloc[0]
 
-                # FIX: OOS return is measured from the same OOS slice used for stitched equity.
-                # This keeps fold metrics and stitched curve methodologically consistent.
-                oos_ret = oos_ret_from_full
+                test_res = run_gem(
+                    test_with_history, broker, risky, safe,
+                    initial_capital=lump_sum_capital,
+                    deadband=best_db,
+                    contribution_schedule=None,  # ← BEZ wpłat
+                )
+                test_oos = test_res.equity.loc[test_start_date:test_end_date]
+
+                if len(test_oos) > 1 and test_oos.iloc[0] > 0:
+                    oos_ret = test_oos.iloc[-1] / test_oos.iloc[0] - 1
+                else:
+                    oos_ret = 0.0
 
                 fold_records.append(dict(
                     fold=fold,
@@ -350,8 +364,7 @@ def walk_forward(
         start += step_months
         fold += 1
 
-    # stitch OOS equity: chain returns so that each fold starts where the
-    # previous one ended
+    # ── Stitching OOS equity (z DCA, do wykresu) ──
     if oos_equities:
         parts = []
         running_value = oos_equities[0].iloc[0] if len(oos_equities[0]) > 0 else 1.0
