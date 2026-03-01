@@ -33,7 +33,7 @@ Przy kapitale 0 PLN, najlepszy wynik końcowy daje BOSSA IKE (promo) (XTB IKE=42
 ### Jak obliczono:
 1. **Broker referencyjny**: BOSSA IKE (promo) (najtańszy IKE — najniższe tarcia kosztowe)
 2. **IS optymalny** (in-sample): 0.068 (6.8%) — najwyższy excess XIRR
-   spośród deadbandów, których MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku
+   spośród deadbandów, których MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku + 10% margin
 3. **OOS średnia** (walk-forward): 0.024 (2.4%)
 4. **OOS mediana** (walk-forward): 0.014 (1.4%)
 5. **Blend** = (IS optymalny + OOS średnia) / 2 = (0.068 + 0.024) / 2 = 0.0462
