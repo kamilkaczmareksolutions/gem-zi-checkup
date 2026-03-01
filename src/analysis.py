@@ -300,6 +300,7 @@ def walk_forward(
         test_start_date = dates[train_end]
         test_end_date = dates[test_end - 1]
 
+
         # select best deadband on training window
         best_db = deadbands[0] if deadbands else 0.0
         best_sharpe = -np.inf
@@ -328,22 +329,11 @@ def walk_forward(
                 oos_equities.append(test_equity)
                 oos_selected_dbs.append(best_db)
 
-                # OOS bez wpłat, z historią lookback dla momentum
-                lookback_needed = 14
-                lookback_start = max(start, train_end - lookback_needed)
-                test_with_history = prices.iloc[lookback_start:test_end]
-                test_start_capital = test_equity.iloc[0]
+                oos_ret_from_full = test_equity.iloc[-1] / test_equity.iloc[0] - 1
 
-                test_res = run_gem(test_with_history, broker, risky, safe,
-                                   initial_capital=test_start_capital,
-                                   deadband=best_db,
-                                   contribution_schedule=None)
-
-                test_res_oos = test_res.equity.loc[test_start_date:test_end_date]
-                if len(test_res_oos) > 1 and test_res_oos.iloc[0] > 0:
-                    oos_ret = test_res_oos.iloc[-1] / test_res_oos.iloc[0] - 1
-                else:
-                    oos_ret = 0.0
+                # FIX: OOS return is measured from the same OOS slice used for stitched equity.
+                # This keeps fold metrics and stitched curve methodologically consistent.
+                oos_ret = oos_ret_from_full
 
                 fold_records.append(dict(
                     fold=fold,

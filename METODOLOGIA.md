@@ -293,14 +293,14 @@ Procedura:
 2. Dla każdego deadbandu z siatki: uruchom backtest DCA na oknie treningowym, policz Sharpe.
 3. Wybierz deadband z najwyższym Sharpe na treningu.
 4. Uruchom backtest DCA na oknie treningowym + 24 miesiące testowe. Wytnij equity za okres testowy (OOS).
-5. **Ewaluacja OOS bez wpłat:** OOS return jest obliczany z osobnego backtesta uruchomionego na samym oknie testowym (z dodatkowym lookbackiem 14 mies. dla momentum), z `initial_capital` = wartość equity na początku okna OOS i `contribution_schedule=None`. Eliminuje to zniekształcenie metryk OOS przez harmonogram wpłat (TWR zamiast MWR).
+5. **Ewaluacja OOS:** OOS return jest liczony bezpośrednio z wycinka OOS (`test_start:test_end`) krzywej equity pochodzącej z tego samego backtesta train+test.
 6. Przesuń `start` o 24 miesiące. Powtórz.
 
 Okna testowe się **nie nakładają** (step = test = 24 miesiące).
 
 Wynik: seria foldów. Dla każdego folda znamy:
 - jaki deadband został wybrany na treningu,
-- jaki return (TWR, bez wpłat) uzyskano OOS (na danych, których algorytm "nie widział" przy wyborze parametru).
+- jaki return uzyskano OOS (na danych, których algorytm "nie widział" przy wyborze parametru), liczony z tej samej ścieżki equity co stitched OOS.
 
 Stitching OOS equity: stopy zwrotu z kolejnych foldów są łączone łańcuchowo (wartość startowa = wartość equity z pierwszego folda OOS).
 

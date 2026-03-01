@@ -60,7 +60,7 @@
 - Okno treningowe: 60 miesięcy (5 lat).
 - Okno testowe: 24 miesiące.
 - Krok: 24 miesiące (brak nakładania się okien testowych).
-- Ewaluacja OOS: TWR bez wpłat (contribution_schedule=None, initial_capital = wartość equity na początku okna OOS). Eliminuje zniekształcenie metryk przez harmonogram cashflow.
+- Ewaluacja OOS: return z wycinka OOS krzywej equity z jednego backtesta train+test (ta sama ścieżka co stitched OOS). Zapewnia spójność metryki foldów i wykresu stitched.
 
 ## Ograniczenia symulacji
 - Brak modelowania wpływu na rynek (market impact) — uzasadnione małym portfelem.
