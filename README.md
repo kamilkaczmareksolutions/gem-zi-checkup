@@ -120,7 +120,7 @@ Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance 
 | Prowizja | 0% | 0% (promocja) | 0.29% (min 14 PLN) | 0% (stale) | 0% |
 | Slippage | 0.10% | 0.10% | 0.10% | 0.10% | 0.10% |
 | Akcje ulamkowe | TAK | NIE | NIE | NIE | TAK |
-| Subkonta walut. | NIE | TAK | TAK | NIE | TAK (Walutomat) |
+| Subkonta walut. | NIE | TAK | TAK | NIE | TAK (subkonta walutowe) |
 | Podatek od zysku | 0% (IKE) | 0% (IKE) | 0% (IKE) | 0% (IKE) | 19% |
 | **Koszt rotacji** | **~1.2%** | **~0.2%** | **~0.78%+** | **~0.4%** | **~0.2% + podatek** |
 
