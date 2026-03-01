@@ -126,7 +126,7 @@ Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance 
 
 ## Testy odpornosci
 
-- **Walk-forward**: 60 mies. trening / 24 mies. test / 4 foldy (nienakl. sie okna). Sredni OOS return: 74.65% (skumulowany, 2-letni), annualizowany: 32.16%.
+- **Walk-forward**: 60 mies. trening / 24 mies. test / 4 foldy (nienakl. sie okna). Sredni OOS return: 30.68% (skumulowany, 2-letni), annualizowany: 13.17%.
 - **Deadband**: IS optimum=6.8% (informacyjnie, podatny na overfitting). Mediana OOS=5.3%, snap do siatki → **5.4%**.
 - **Timing luck**: XIRR od 12.71% do 17.14% w zaleznosci od dnia rebalancingu (std=1.87%).
 - **Czulosc FX**: kazde 0.25 pp kosztu FX zjada ~20k-22k PLN wartosci koncowej.
