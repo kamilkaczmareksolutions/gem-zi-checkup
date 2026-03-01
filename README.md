@@ -113,7 +113,7 @@ Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance 
 
 ## Modele brokerow
 
-| Parametr | XTB IKE | BOSSA IKE (promo) | BOSSA IKE (standard) | mBank eMakler IKE | Opodatkowany |
+| Parametr | XTB IKE | BOSSA IKE (promocja) | BOSSA IKE (standard) | mBank eMakler IKE | XTB Konto opodatkowane |
 |----------|--------:|------------:|---------------:|----------:|-------------:|
 | FX per leg (rotacja) | 0.50% | 0.00% | 0.00% | 0.10% | 0.00% |
 | FX na wplatach | -- | 0.10% | 0.10% | -- | 0.20% (Walutomat) |
