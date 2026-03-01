@@ -40,6 +40,7 @@
 - Podatek: 0% (parasol IKE).
 - Slippage: 0.1%.
 - Kluczowa różnica vs BOSSA: mBank nalicza FX na obu nogach rotacji (sell→PLN→buy), BOSSA promo z subkontami walutowymi unika FX przy rotacjach w ramach jednej waluty.
+- Źródło: [mBank IKE eMakler](https://www.mbank.pl/indywidualny/inwestycje-i-oszczednosci/emerytura/ike-emakler/)
 
 ### Konto opodatkowane (benchmark)
 - FX na rotacjach: 0% (sprzedaż i zakup w tej samej walucie, np. USD→USD).
