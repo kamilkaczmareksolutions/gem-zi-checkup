@@ -130,7 +130,7 @@ Finalny deadband jest wyznaczany trójstopniowo, by uniknąć overfittingu do da
 
 1. **Broker referencyjny** — automatycznie wyznaczany jako najtańszy IKE (najwyższa wartość końcowa w baseline DCA). MaxDD strategii jest oceniany na tym brokerze, ponieważ najniższe tarcia kosztowe dają najczystszy obraz "prawdziwego" MaxDD strategii.
 
-2. **IS optymalny** (in-sample) — z siatki deadbandów wybierany jest ten, którego MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku DCA (IWDA.L), a jednocześnie daje najwyższy excess XIRR nad benchmarkiem DCA.
+2. **IS optymalny** (in-sample) — z siatki deadbandów wybierany jest ten, którego MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku DCA (IWDA.L) + 10% tolerancji (margin), a jednocześnie daje najwyższy excess XIRR nad benchmarkiem DCA.
 
 3. **Blend z OOS** — walk-forward generuje per fold najlepszy deadband (po Sharpe). Średnia OOS deadbandów (`oos_avg`) jest uśredniana z IS optimum:
 
@@ -280,7 +280,7 @@ Sharpe i Sortino liczone na miesięcznych stopach zwrotu krzywej equity (pct_cha
 
 Benchmark = `IWDA.L` (iShares MSCI World), buy-and-hold DCA z tym samym harmonogramem wpłat co strategia GEM (bez kosztów transakcyjnych). Używany do:
 - Obliczenia excess XIRR (XIRR strategii - XIRR benchmarku DCA)
-- Ograniczenia MaxDD przy selekcji optymalnego deadbandu (MaxDD strategii ≤ MaxDD benchmarku DCA)
+- Ograniczenia MaxDD przy selekcji optymalnego deadbandu (MaxDD strategii ≤ MaxDD benchmarku DCA + 10% tolerancji)
 
 ---
 

@@ -279,15 +279,16 @@ def etap4(cfg, prices, brokers, benchmark_metrics, baseline_summary, contributio
     ref_sweep["excess_xirr"] = ref_sweep["xirr"] - bench_xirr
     ref_sweep.to_csv(RESULTS / f"deadband_sweep_reference_{ref_broker_name}.csv", index=False)
 
-    safe_df = ref_sweep[ref_sweep["max_drawdown"] >= bench_maxdd]
+    maxdd_threshold = bench_maxdd * 1.1
+    safe_df = ref_sweep[ref_sweep["max_drawdown"] >= maxdd_threshold]
     if not safe_df.empty:
         best_idx = safe_df["excess_xirr"].idxmax()
         best_row = safe_df.loc[best_idx]
-        selection_note = f"MaxDD <= benchmark (ref: {ref_broker.name})"
+        selection_note = f"MaxDD <= benchmark + 10% margin, threshold: {maxdd_threshold:.2%}, ref: {ref_broker.name})"
     else:
         best_idx = ref_sweep["max_drawdown"].idxmax()
         best_row = ref_sweep.loc[best_idx]
-        selection_note = f"fallback: min MaxDD (none passed filter on {ref_broker.name})"
+        selection_note = f"fallback: min MaxDD (none passed filter on {ref_broker.name}, threshold was {maxdd_threshold:.2%})"
 
     is_optimal_db = float(best_row["deadband"])
     print(f"\n  IS optymalny deadband = {is_optimal_db:.3f} ({is_optimal_db*100:.1f}%) [{selection_note}]")
@@ -732,7 +733,7 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
 ### Jak obliczono:
 1. **Broker referencyjny**: {ref_broker_label} (najtańszy IKE — najniższe tarcia kosztowe)
 2. **IS optymalny** (in-sample): {is_opt:.3f} ({is_opt*100:.1f}%) — najwyższy excess XIRR
-   spośród deadbandów, których MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku
+   spośród deadbandów, których MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku + 10% margin
 """
     if oos_avg is not None:
         blend_section += f"""3. **OOS średnia** (walk-forward): {oos_avg:.3f} ({oos_avg*100:.1f}%)
