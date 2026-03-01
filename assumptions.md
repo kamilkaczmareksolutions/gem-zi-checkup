@@ -53,12 +53,13 @@
 - Deadband chroni przed whipsawingiem i kompensuje koszty transakcyjne.
 - Zakres testów: 0.0% do 8.0% co 0.2 pp.
 - Wariant dynamiczny: `Delta = base + k * sigma(6m)`.
-- Wybór optymalnego: **blend IS + OOS** — IS optimum (z constraint MaxDD <= benchmark + 10% margin, oceniany na najtańszym brokerze IKE) uśredniany ze średnią OOS z walk-forward. Jeden deadband dla wszystkich brokerów.
+- Wybór optymalnego: **mediana OOS** — IS optimum (informacyjnie, z constraint MaxDD <= benchmark + 10% margin, oceniany na najtańszym brokerze IKE) wyznacza górną granicę. Rekomendowany deadband = mediana deadbandów wybranych per fold OOS w walk-forward, zaokrąglona do siatki. Jeden deadband dla wszystkich brokerów.
 
 ## Walk-Forward
-- Okno treningowe: 36 miesięcy (3 lata, skrócone z powodu ograniczeń danych IB01.L).
-- Okno testowe: 12 miesięcy.
-- Krok: 12 miesięcy (brak nakładania się okien testowych).
+- Okno treningowe: 60 miesięcy (5 lat).
+- Okno testowe: 24 miesiące.
+- Krok: 24 miesiące (brak nakładania się okien testowych).
+- Ewaluacja OOS: TWR bez wpłat (contribution_schedule=None, initial_capital = wartość equity na początku okna OOS). Eliminuje zniekształcenie metryk przez harmonogram cashflow.
 
 ## Ograniczenia symulacji
 - Brak modelowania wpływu na rynek (market impact) — uzasadnione małym portfelem.

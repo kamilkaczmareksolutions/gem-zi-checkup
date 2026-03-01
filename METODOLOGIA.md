@@ -122,26 +122,26 @@ if not regime_change and spread < deadband:
     continue
 ```
 
-### Wybór optymalnego deadbandu — blend IS + OOS
+### Wybór optymalnego deadbandu — mediana OOS
 
-**Kluczowa zasada:** kalibracja deadbandu (IS sweep, walk-forward OOS, blend) odbywa się na **identycznym scenariuszu** jak produkcyjna symulacja: `initial_capital=0`, regularne wpłaty z CPI rewaloryzacją (`fitting_base_contribution_pln` z konfiga, domyślnie 1000 PLN/mies). Benchmark (IWDA.L) jest również porównywany w trybie DCA z tym samym harmonogramem wpłat (bez kosztów).
+**Kluczowa zasada:** kalibracja deadbandu (IS sweep, walk-forward OOS) odbywa się na **identycznym scenariuszu** jak produkcyjna symulacja: `initial_capital=0`, regularne wpłaty z CPI rewaloryzacją (`fitting_base_contribution_pln` z konfiga, domyślnie 1000 PLN/mies). Benchmark (IWDA.L) jest również porównywany w trybie DCA z tym samym harmonogramem wpłat (bez kosztów).
 
-Finalny deadband jest wyznaczany trójstopniowo, by uniknąć overfittingu do danych historycznych:
+Finalny deadband jest wyznaczany dwuetapowo:
 
 1. **Broker referencyjny** — automatycznie wyznaczany jako najtańszy IKE (najwyższa wartość końcowa w baseline DCA). MaxDD strategii jest oceniany na tym brokerze, ponieważ najniższe tarcia kosztowe dają najczystszy obraz "prawdziwego" MaxDD strategii.
 
-2. **IS optymalny** (in-sample) — z siatki deadbandów wybierany jest ten, którego MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku DCA (IWDA.L) + 10% tolerancji (margin), a jednocześnie daje najwyższy excess XIRR nad benchmarkiem DCA.
+2. **IS optymalny** (informacyjnie) — z siatki deadbandów wybierany jest ten, którego MaxDD na brokerze referencyjnym nie przekracza MaxDD benchmarku DCA (IWDA.L) + 10% tolerancji (margin), a jednocześnie daje najwyższy excess XIRR nad benchmarkiem DCA. IS optymalny nie jest używany bezpośrednio do rekomendacji — jest podatny na look-ahead bias (overfitting do pełnej historii). Pełni rolę górnej granicy rozsądnego deadbandu.
 
-3. **Blend z OOS** — walk-forward generuje per fold najlepszy deadband (po Sharpe). Średnia OOS deadbandów (`oos_avg`) jest uśredniana z IS optimum:
+3. **Rekomendowany deadband = mediana OOS** — walk-forward generuje per fold najlepszy deadband (po Sharpe). **Mediana** wybranych deadbandów OOS jest zaokrąglana do najbliższego punktu na siatce:
 
 ```
-blended = (IS_optimum + OOS_average) / 2
+recommended = median(OOS_deadbands)
 → zaokrąglony do najbliższego punktu na siatce testowanych deadbandów
 ```
 
-Motywacja: sam IS optimum jest podatny na overfitting (np. 6.8% na danych historycznych). OOS średnia (np. 3.0%) pokazuje, co walk-forward faktycznie wybiera na nowych danych. Uśrednienie daje kompromis odporny na overfitting.
+Motywacja: IS optimum jest podatny na overfitting. Mediana OOS pokazuje, co walk-forward faktycznie wybiera na nowych danych. Mediana jest odporniejsza na skrajne foldy niż średnia.
 
-**Jeden deadband dla wszystkich brokerów** — strategia momentum jest niezależna od brokera; broker wpływa tylko na koszty, nie na sygnał. Dlatego finalny blended deadband jest stosowany jednolicie.
+**Jeden deadband dla wszystkich brokerów** — strategia momentum jest niezależna od brokera; broker wpływa tylko na koszty, nie na sygnał. Dlatego finalny rekomendowany deadband jest stosowany jednolicie.
 
 ### Testowane warianty deadbandu
 
@@ -244,7 +244,7 @@ Dla każdego miesiąca `t` w zakresie danych:
 
 Wartość portfela jest zapisywana co miesiąc. To tworzy krzywą equity.
 
-**Identyczny scenariusz** (start=0, DCA z CPI) jest używany we wszystkich etapach: baseline, sweep deadbandów, kalibracja IS+OOS, walk-forward, timing luck, benchmark, czułość kosztów. Nie ma rozbieżności między scenariuszem fitowania a scenariuszem produkcyjnym.
+**Identyczny scenariusz** (start=0, DCA z CPI) jest używany we wszystkich etapach: baseline, sweep deadbandów, kalibracja IS, walk-forward OOS, timing luck, benchmark, czułość kosztów. Nie ma rozbieżności między scenariuszem fitowania a scenariuszem produkcyjnym.
 
 ---
 
@@ -288,16 +288,19 @@ Benchmark = `IWDA.L` (iShares MSCI World), buy-and-hold DCA z tym samym harmonog
 
 ### 7.1 Walk-forward (walidacja out-of-sample)
 
-Procedura (z DCA — ten sam harmonogram wpłat co reszta pipeline'u):
-1. Weź okno treningowe = 36 miesięcy (od pozycji `start`).
+Procedura:
+1. Weź okno treningowe = 60 miesięcy (od pozycji `start`). Trening odbywa się z DCA (ten sam harmonogram wpłat co reszta pipeline'u).
 2. Dla każdego deadbandu z siatki: uruchom backtest DCA na oknie treningowym, policz Sharpe.
 3. Wybierz deadband z najwyższym Sharpe na treningu.
-4. Uruchom backtest DCA na oknie treningowym + 12 miesięcy testowych. Wytnij equity za okres testowy (OOS).
-5. Przesuń `start` o 12 miesięcy. Powtórz.
+4. Uruchom backtest DCA na oknie treningowym + 24 miesiące testowe. Wytnij equity za okres testowy (OOS).
+5. **Ewaluacja OOS bez wpłat:** OOS return jest obliczany z osobnego backtesta uruchomionego na samym oknie testowym (z dodatkowym lookbackiem 14 mies. dla momentum), z `initial_capital` = wartość equity na początku okna OOS i `contribution_schedule=None`. Eliminuje to zniekształcenie metryk OOS przez harmonogram wpłat (TWR zamiast MWR).
+6. Przesuń `start` o 24 miesiące. Powtórz.
+
+Okna testowe się **nie nakładają** (step = test = 24 miesiące).
 
 Wynik: seria foldów. Dla każdego folda znamy:
 - jaki deadband został wybrany na treningu,
-- jaki return uzyskano OOS (na danych, których algorytm "nie widział" przy wyborze parametru).
+- jaki return (TWR, bez wpłat) uzyskano OOS (na danych, których algorytm "nie widział" przy wyborze parametru).
 
 Stitching OOS equity: stopy zwrotu z kolejnych foldów są łączone łańcuchowo (wartość startowa = wartość equity z pierwszego folda OOS).
 
@@ -323,9 +326,11 @@ Trzy warianty koszyka:
 | **U7** | U5 + IGLN.L (złoto), WSML.L (small cap) | IB01.L, CBU0.L |
 | **U9** | U7 + IEUX.L (Europa), DPYA.L (REITs) | IB01.L, CBU0.L |
 
-Każdy wariant testowany identycznie (ten sam deadband, ten sam broker, ten sam backtest).
+Każdy wariant testowany identycznie (ten sam broker, ten sam backtest).
 
 Porównanie uniwersów odbywa się na pełnej długości każdego z nich (dłuższe uniwersa mają więcej danych). Porównanie "common window" jest pominięte w trybie DCA, ponieważ obcięcie krzywej equity do wspólnej daty i oderwanie od harmonogramu wpłat prowadzi do błędnych metryk.
+
+Etap 5 uruchamiany jest **po** etapie 6 (walk-forward), dzięki czemu uniwersa są testowane zarówno przy IS optymalnym deadbandzie, jak i przy rekomendowanym (mediana OOS). Wyniki obu wariantów zapisywane w `universe_comparison.csv` i `universe_comparison_oos.csv`.
 
 ---
 
@@ -369,7 +374,7 @@ Wpłata (po rewaloryzacji) jest dodawana na początku każdego miesiąca. Jeśli
 
 4. **IB01.L ma dane tylko od 2019-02.** Strategia bazowa (U5) efektywnie operuje od ~2020-03 (po 13-miesięcznym lookbacku momentum). Wcześniejsze miesiące korzystają z CBU0.L jako jedynego safe asset.
 
-5. **Walk-forward z krótkim oknem treningowym (36 mies.).** Wynika z ograniczenia danych IB01.L. Idealnie powinno być 60+ miesięcy, ale wtedy zostałoby za mało foldów.
+5. **Walk-forward z 4 foldami OOS.** Okno treningowe = 60 mies., testowe = 24 mies. Daje to 4 nienakładające się foldy na dostępnych danych. Mała liczba foldów ogranicza precyzję estymacji OOS, ale eliminuje overlap bias.
 
 ---
 

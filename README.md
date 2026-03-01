@@ -8,7 +8,7 @@ Strategia GEM to algorytm rotacyjny: co miesiac wrzucasz 100% kapitalu w jeden E
 
 Problem w tym, ze czysta teoria nie uwzglednia **realnych kosztow**: przewalutowania (XTB inkasuje 0.5% na kazdej konwersji PLN/USD), brak akcji ulamkowych (BOSSA, mBank), podatek Belki, slippage. Ten projekt odpowiada na konkretne pytania:
 
-1. **XTB IKE, BOSSA IKE czy mBank IKE?** -- co jest lepsze dla strategii rotacyjnej przy malym kapitale (~9k PLN)?
+1. **XTB IKE, BOSSA IKE czy mBank IKE?** -- co jest lepsze dla strategii rotacyjnej przy regularnych wplatach (DCA)?
 2. **Jaki deadband (prog rotacji)?** -- o ile punktow procentowych nowy ETF musi bic obecny, zeby rotacja sie oplacala po kosztach?
 3. **Czy dodawac nowe ETF-y** (zloto, small capy, REITs, Europa ex-US)?
 
@@ -16,11 +16,11 @@ Problem w tym, ze czysta teoria nie uwzglednia **realnych kosztow**: przewalutow
 
 | Pytanie | Odpowiedz | Dowod |
 |---------|-----------|-------|
-| Broker | **BOSSA IKE (promo)** | 62k vs XTB 46k vs mBank 58k (z 9k startu) |
-| Deadband | **4.8%** (blend IS + OOS) | IS=6.8%, OOS avg=3.0%, blend=(6.8+3.0)/2→4.8% |
-| Wiecej ETF-ow | **Nie** | U5 (Sharpe 1.19) >> U7 (0.95) >> U9 (0.87) |
+| Broker | **BOSSA IKE (promo)** | XIRR 17.98% vs XTB 17.25% vs mBank 17.79% (DCA 1000 PLN/mies.) |
+| Deadband | **5.4%** (mediana OOS) | IS=6.8%, OOS mediana=5.3%, snap do siatki → 5.4% |
+| Wiecej ETF-ow | **Nie** | U5 (Sharpe 1.50) > U7 (1.46) > U9 (1.48); U5 najlepszy XIRR |
 | mBank vs BOSSA | **BOSSA lepsza** | 0% FX (subkonta) > 0.2% FX mBank; ale mBank 0% prowizji na stale |
-| Rachunek opodatkowany | **Katastrofa** | ~42k vs ~62k IKE (podatek Belki niszczy strategie rotacyjna) |
+| Rachunek opodatkowany | **Katastrofa** | XIRR 15.24% vs ~18% IKE (podatek Belki niszczy strategie rotacyjna) |
 
 ## Koszyk ETF (U5)
 
@@ -42,8 +42,8 @@ Co miesiac:
        → kup najlepsza obligacje (IB01 lub CBU0)        [risk-off]
      W przeciwnym razie:
        → kup najlepszy ryzykowny ETF                     [risk-on]
-  4. Rotuj TYLKO jesli roznica momentum > deadband (4.8%)
-     WYJĄTEK: zmiana rezimu (risk-on ↔ risk-off) -- rotuj bezwarunkowo
+  4. Rotuj TYLKO jesli roznica momentum > deadband (5.4%)
+     WYJATEK: zmiana rezimu (risk-on ↔ risk-off) -- rotuj bezwarunkowo
 ```
 
 ## Struktura projektu
@@ -60,11 +60,11 @@ Co miesiac:
 │
 ├── src/
 │   ├── config.py            # Ladowanie YAML
-│   ├── data.py              # Pobieranie danych z Yahoo Finance
+│   ├── data.py              # Pobieranie danych z Yahoo Finance + CPI z GUS API + build_contribution_schedule
 │   ├── momentum.py          # Momentum 13-1 + dual momentum (selekcja celu)
 │   ├── broker.py            # Modele kosztowe: XTB, BOSSA, mBank, rachunek opodatkowany
 │   ├── backtest.py          # Glowna petla symulacji (kupno/sprzedaz/koszty/podatki)
-│   ├── metrics.py           # CAGR, Sharpe, Sortino, MaxDD, Calmar
+│   ├── metrics.py           # XIRR, Sharpe, Sortino, MaxDD, Calmar
 │   └── analysis.py          # Sweep deadbandow, walk-forward, timing luck
 │
 └── results/                 # Wyniki (generowane przez run_all.py)
@@ -105,10 +105,10 @@ Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance 
 |------|---------|-------|
 | 1 | Pobiera dane, waliduje pokrycie | `data_coverage.csv` |
 | 2 | Baseline GEM (5 ETF, deadband=0) na 5 brokerach | Krzywe kapitalowe, trade logi |
-| 3 | Sweep 41 wartosci deadbandu (0-8%) per broker | Heatmapy CAGR/Sharpe vs deadband |
-| 4 | Kalibracja IS (najtanszy IKE) + blend z OOS walk-forward | Optymalny deadband (jednakowy) |
-| 5 | Porownanie koszykow U5 / U7 / U9 | Czy dodawac ETF-y |
-| 6 | Walk-forward (11 foldow OOS), timing luck, czulosc FX | Walidacja odpornosci |
+| 3 | Sweep 41 wartosci deadbandu (0-8%) per broker | Heatmapy XIRR/Sharpe vs deadband |
+| 4 | Kalibracja IS (najtanszy IKE, MaxDD + 10% margin) | IS optymalny deadband |
+| 6 | Walk-forward (4 foldy OOS), timing luck, czulosc FX | Walidacja odpornosci, mediana OOS |
+| 5 | Porownanie koszykow U5 / U7 / U9 (IS + OOS deadband) | Czy dodawac ETF-y |
 | 7 | Scenariusze z wplatami, crossover XTB/BOSSA/mBank | `decision_memo.md` |
 
 ## Modele brokerow
@@ -126,11 +126,11 @@ Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance 
 
 ## Testy odpornosci
 
-- **Walk-forward**: 36 mies. trening / 12 mies. test / 11 foldow. Sredni OOS return: 14.58%/rok. OOS CAGR: 13.16%.
-- **Blend IS+OOS**: IS optimum=6.8% (overfitting risk), OOS avg=3.0%, blend=4.8% (kompromis).
-- **Timing luck**: CAGR od 9.5% do 16.9% w zaleznosci od dnia rebalancingu.
-- **Czulosc FX**: kazde 0.25 pp kosztu FX zjada ~4,000-4,500 PLN wartosci koncowej.
-- **Porownanie uniwersow**: U5 > U7 > U9 (wiecej ETF-ow = wiecej rotacji = gorsze wyniki).
+- **Walk-forward**: 60 mies. trening / 24 mies. test / 4 foldy (nienakl. sie okna). Sredni OOS return: 30.68% (skumulowany, 2-letni), annualizowany: 14.31%.
+- **Deadband**: IS optimum=6.8% (informacyjnie, podatny na overfitting). Mediana OOS=5.3%, snap do siatki → **5.4%**.
+- **Timing luck**: XIRR od 12.71% do 17.14% w zaleznosci od dnia rebalancingu (std=1.87%).
+- **Czulosc FX**: kazde 0.25 pp kosztu FX zjada ~20k-22k PLN wartosci koncowej.
+- **Porownanie uniwersow**: U5 > U7 > U9 (wiecej ETF-ow = wiecej rotacji = gorsze wyniki netto).
 
 ## Dokumentacja
 
