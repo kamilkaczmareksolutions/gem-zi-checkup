@@ -425,8 +425,10 @@ def etap6(cfg, prices, daily_prices, broker, optimal_db, contribution_schedule,
         print(wf["folds"].to_string())
         if len(wf["oos_equity"]) > 1:
             oos_m = compute_all(wf["oos_equity"], label="OOS")
-            print(f"\n    OOS stitched: Sharpe={oos_m['sharpe']:.2f}, "
-                  f"MaxDD={oos_m['max_drawdown']:.2%}")
+            fold_rets = wf["folds"]["oos_return"]
+            honest_sharpe = fold_rets.mean() / fold_rets.std() if fold_rets.std() > 0 else 0.0
+            print(f"\n    OOS stitched: Sharpe={honest_sharpe:.2f},"
+                  f" MaxDD={oos_m['max_drawdown']:.2%}")
 
             fig, ax = plt.subplots(figsize=(12, 5))
             ax.plot(wf["oos_equity"].index, wf["oos_equity"].values, linewidth=1.5)
