@@ -451,9 +451,13 @@ def etap6(cfg, prices, daily_prices, broker, optimal_db, contribution_schedule,
             tl.to_csv(RESULTS / "timing_luck.csv", index=False)
             print("    Wyniki timing luck:")
             for _, row in tl.iterrows():
-                print(f"      Offset {int(row['offset'])}: XIRR={row['xirr']:.2%}, "
-                      f"Sharpe={row['sharpe']:.2f}")
+                print(f"      Offset {row['offset']}: XIRR={row['xirr']:.2%}")
 
+            xirr_vals = tl["xirr"].dropna()
+            print(f"    Rozrzut XIRR: min={xirr_vals.min():.2%}, "
+                  f"max={xirr_vals.max():.2%}, "
+                  f"std={xirr_vals.std():.2%}")
+            
             fig, ax = plt.subplots(figsize=(10, 5))
             ax.bar(tl["offset"], tl["xirr"], color="steelblue", alpha=0.8)
             ax.set_xlabel("Dzień roboczy miesiąca (offset)")
