@@ -683,7 +683,8 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
     # OOS validation
     if wf_result and "folds" in wf_result and not wf_result["folds"].empty:
         avg_oos_ret = wf_result["folds"]["oos_return"].mean()
-        oos_note = f"Średni OOS return per fold (skumulowany, 2-letni): {avg_oos_ret:.2%}. Annualizowany: {(1 + avg_oos_ret)**0.5 - 1:.2%}"
+        avg_ann = float(np.mean([(1 + r) ** 0.5 - 1 for r in wf_result["folds"]["oos_return"]]))
+        oos_note = f"Średni OOS return per fold (skumulowany, 2-letni): {avg_oos_ret:.2%}. Annualizowany: {avg_ann:.2%}"
         if blend_info and blend_info.get("oos_deadbands"):
             oos_note += f"\nWybrane deadbandy per fold: {[f'{d:.3f}' for d in blend_info['oos_deadbands']]}"
     else:

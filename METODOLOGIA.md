@@ -302,7 +302,9 @@ Wynik: seria foldów. Dla każdego folda znamy:
 - jaki deadband został wybrany na treningu,
 - jaki return uzyskano OOS (na danych, których algorytm "nie widział" przy wyborze parametru), liczony z tej samej ścieżki equity co stitched OOS.
 
-Stitching OOS equity: stopy zwrotu z kolejnych foldów są łączone łańcuchowo (wartość startowa = wartość equity z pierwszego folda OOS).
+**Annualizacja OOS return:** każdy fold annualizowany jest osobno `(1 + r_i)^{0.5} - 1`, następnie wyniki są uśredniane. Annualizacja ze średniej skumulowanej byłaby błędna przy dużym rozrzucie zwrotów między foldami (Jensen's inequality):
+
+**Stitching OOS equity**: stopy zwrotu z kolejnych foldów są łączone łańcuchowo (wartość startowa = wartość equity z pierwszego folda OOS).
 
 ### 7.2 Timing luck
 
