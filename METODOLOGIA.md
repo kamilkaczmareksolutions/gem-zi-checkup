@@ -264,7 +264,7 @@ Gdzie:
 - `t_i` = liczba dni od pierwszej wpłaty
 - `r` = szukana roczna stopa zwrotu (XIRR)
 
-Solver: `scipy.optimize.brentq` z bracketingiem [-50%, 1000%].
+Solver: `scipy.optimize.brentq` z początkowym bracketingiem [-50%, 1000%]; jeśli w tym przedziale nie da się znaleźć zmiany znaku NPV, algorytm może tymczasowo poszerzyć zakres (techniczny szczegół implementacyjny, nieistotny dla typowych ścieżek cashflow).
 
 | Metryka | Wzór / opis |
 |---------|-------------|
@@ -288,23 +288,30 @@ Benchmark = `IWDA.L` (iShares MSCI World), buy-and-hold DCA z tym samym harmonog
 
 ### 7.1 Walk-forward (walidacja out-of-sample)
 
-Procedura:
-1. Weź okno treningowe = 60 miesięcy (od pozycji `start`). Trening odbywa się z DCA (ten sam harmonogram wpłat co reszta pipeline'u).
-2. Dla każdego deadbandu z siatki: uruchom backtest DCA na oknie treningowym, policz Sharpe.
+Procedura (zgodna z implementacją w `src/analysis.py`):
+1. Weź okno treningowe = 60 miesięcy (od pozycji `start`). Trening odbywa się w trybie DCA (ten sam harmonogram wpłat co reszta pipeline'u) z `initial_capital=0` oraz `contribution_schedule` z konfiguracji.
+2. Dla każdego deadbandu z siatki: uruchom backtest DCA na oknie treningowym, policz Sharpe na miesięcznych stopach zwrotu krzywej equity.
 3. Wybierz deadband z najwyższym Sharpe na treningu.
-4. Uruchom backtest DCA na oknie treningowym + 24 miesiące testowe. Wytnij equity za okres testowy (OOS).
-5. **Ewaluacja OOS:** OOS return jest liczony bezpośrednio z wycinka OOS (`test_start:test_end`) krzywej equity pochodzącej z tego samego backtesta train+test.
-6. Przesuń `start` o 24 miesiące. Powtórz.
+4. Uruchom backtest DCA na oknie treningowym + 24 miesiące testowe (train+test) z tym samym deadbandem i tym samym harmonogramem wpłat. Z otrzymanej krzywej equity wytnij część testową (`test_start:test_end`) — to jest OOS DCA equity używana do „stitchingu” (wizualizacji).
+5. **Definicja OOS return (czysty sygnał, lump sum):**
+   - Wyznacz wartość portfela DCA na początku okresu testowego (`equity_DCA[test_start]`). Traktuj ją jako kapitał jednorazowy (lump sum) zainwestowany na początku testu.
+   - Zbuduj pomocnicze okno cen obejmujące: konieczną historię dla momentum (ok. 14 miesięcy wstecz od `test_start`) + sam okres testowy.
+   - Uruchom osobny backtest bez wpłat (`contribution_schedule=None`) z `initial_capital` równym tej wartości lump sum i z wybranym deadbandem.
+   - OOS return `r_i` dla folda to łączny zwrot z tego lump-sum backtestu na odcinku `test_start:test_end`: `r_i = equity_lump[test_end] / equity_lump[test_start] - 1`.
+6. Przesuń `start` o 24 miesiące. Powtórz kroki 1–5.
 
 Okna testowe się **nie nakładają** (step = test = 24 miesiące).
 
 Wynik: seria foldów. Dla każdego folda znamy:
-- jaki deadband został wybrany na treningu,
-- jaki return uzyskano OOS (na danych, których algorytm "nie widział" przy wyborze parametru), liczony z tej samej ścieżki equity co stitched OOS.
+- jaki deadband został wybrany na treningu (DCA),
+- jaki łączny return `r_i` uzyskano OOS w trybie lump sum (na danych, których algorytm „nie widział” przy wyborze parametru),
+- fragment DCA-equity z okresu testowego do wykorzystania przy sklejaniu krzywej OOS.
 
-**Annualizacja OOS return:** każdy fold annualizowany jest osobno `(1 + r_i)^{0.5} - 1`, następnie wyniki są uśredniane. Annualizacja ze średniej skumulowanej byłaby błędna przy dużym rozrzucie zwrotów między foldami (Jensen's inequality):
+**Stitching OOS equity (DCA):** stopy zwrotu z kolejnych foldów DCA (`test_equity_dca`) są łączone łańcuchowo w jedną krzywą OOS (wartość startowa = wartość equity z pierwszego folda). Ta krzywa jest używana do wizualizacji i wyliczenia zbiorczych metryk (np. XIRR / Sharpe odczytywane z `compute_all`).
 
-**Stitching OOS equity**: stopy zwrotu z kolejnych foldów są łączone łańcuchowo (wartość startowa = wartość equity z pierwszego folda OOS).
+**Metryki per fold:** w pliku wynikowym `walk_forward_folds.csv`:
+- kolumna `selected_db` zawiera wybrany na treningu deadband,
+- kolumna `oos_return` zawiera łączny zwrot `r_i` dla folda z lump-sum backtestu (bez annualizacji; w razie potrzeby można ją annualizować np. jako `(1 + r_i)^{12 / test_months} - 1`).
 
 ### 7.2 Timing luck
 
