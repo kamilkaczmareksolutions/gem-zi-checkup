@@ -67,30 +67,40 @@ Co miesiac:
 │   ├── metrics.py           # XIRR, Sharpe, Sortino, MaxDD, Calmar
 │   └── analysis.py          # Sweep deadbandow, walk-forward, timing luck
 │
-└── results/                 # Wyniki (generowane przez run_all.py)
-    ├── decision_memo.md     # Finalna rekomendacja
-    ├── baseline_equity_curves.png
-    ├── deadband_sweep_comparison.png
-    ├── crossover_brokers.png
-    ├── universe_comparison.png
-    ├── walk_forward_oos.png
-    ├── timing_luck.png
-    ├── *.csv                # Trade logi, metryki, surowe dane
+├── youtube_insights/        # Analiza komentarzy YouTube (osobny modul)
+│   ├── run_comments_insights.py   # Entrypoint: python -m youtube_insights
+│   ├── youtube_client.py          # YouTube Data API v3 client
+│   ├── checkpoint_store.py        # Inkrementalny checkpoint (fingerprinting watkow)
+│   ├── gemini_analyzer.py         # Gemini: ekstrakcja insightow + agregacja ROI
+│   ├── report_builder.py          # Generator raportu Markdown
+│   ├── schemas.py                 # Modele danych
+│   └── config.example.yaml        # Konfiguracja playlisty, modelu, wag ROI
+│
+└── results/
+    ├── decision_memo.md     # Finalna rekomendacja (backtest)
+    ├── youtube_insights/    # Wyniki analizy komentarzy
+    │   ├── reports/         # Raporty Markdown (ROI ranking)
+    │   ├── raw/             # Surowe snapshoty watkow (JSONL)
+    │   └── state/           # Checkpoint (nie commitowany)
+    ├── *.png, *.csv         # Wykresy i dane z backtestu
     └── ...
 ```
 
 ## Konfiguracja
 
-Skopiuj plik `.env.local` do `.env` i wpisz swoj klucz API GUS:
+Skopiuj plik `.env.local` do `.env` i wpisz swoje klucze API:
 
 ```bash
 cp .env.local .env
-# Edytuj .env i wstaw prawdziwy klucz z https://api.stat.gov.pl/Home/BdlApi
+# Edytuj .env i wstaw:
+#   GUS_API_KEY     — klucz z https://api.stat.gov.pl/Home/BdlApi (darmowy)
+#   YOUTUBE_API_KEY — klucz YouTube Data API v3 z Google Cloud Console
+#   GEMINI_API_KEY  — klucz Gemini API z https://aistudio.google.com/apikey
 ```
 
-Klucz sluzy do pobierania danych o inflacji CPI (wskaznik srednioroczny) z API Banku Danych Lokalnych GUS. Rejestracja jest darmowa. 
-
 ## Uruchomienie
+
+### Backtest GEM (glowna analiza)
 
 ```bash
 pip install -r requirements.txt
@@ -140,6 +150,14 @@ Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance 
 - [`assumptions.md`](assumptions.md) -- jawne zalozenia symulacji
 - [`spec_inputs.yaml`](spec_inputs.yaml) -- wszystkie parametry w jednym pliku
 - [`results/decision_memo.md`](results/decision_memo.md) -- finalna rekomendacja z liczbami
+
+## Analiza komentarzy (youtube_insights)
+
+Osobny modul (`python -m youtube_insights`) analizujacy komentarze z YouTube przy pomocy Gemini LLM. Cel: zidentyfikowac najczestsze pytania, watpliwosci i problemy inwestorow wokol strategii GEM, zeby lepiej adresowac je w przyszlych materialach edukacyjnych. Wyniki sa rankingowane wg wskaznika ROI (czestotliwosc × dotkliwosc × akcjonowalnosc × intencja zakupowa).
+
+W przyszlosci modul zostanie rozszerzony o zrodla: X (Twitter), Wykop i Reddit.
+
+Konfiguracja: w `.env` ustaw `YOUTUBE_API_KEY` (klucz YouTube Data API v3 z Google Cloud Console), `GEMINI_API_KEY` i `YOUTUBE_PLAYLIST_ID` (ID playlisty, ktorej komentarze chcesz przeanalizowac).
 
 ## Licencja
 

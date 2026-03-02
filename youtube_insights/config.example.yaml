@@ -1,0 +1,16 @@
+# playlist_id comes from env var YOUTUBE_PLAYLIST_ID (not hardcoded here)
+
+gemini:
+  model: "gemini-2.5-flash-lite"
+  temperature: 0.2
+  batch_token_budget: 3000       # target input tokens per batch (~15-25 threads → ~15-25 insights → output fits)
+  max_output_tokens: 65535       # flash-lite max; large enough for any batch
+
+youtube:
+  max_results_per_page: 100      # commentThreads.list maxResults (1-100)
+
+roi_weights:
+  frequency: 0.35
+  severity: 0.25
+  actionability: 0.25
+  buyer_intent: 0.15
