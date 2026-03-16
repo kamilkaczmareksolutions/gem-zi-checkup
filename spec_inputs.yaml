@@ -7,18 +7,18 @@ data:
 
 universes:
   U5:
-    risky: ["CNDX.L", "EIMI.L", "IWDA.L"]
+    risky: ["IUIT.L", "EIMI.L", "IWDA.L"]
     safe:  ["IB01.L", "CBU0.L"]
   U7:
-    risky: ["CNDX.L", "EIMI.L", "IWDA.L", "IGLN.L", "WSML.L"]
+    risky: ["IUIT.L", "EIMI.L", "IWDA.L", "IGLN.L", "WSML.L"]
     safe:  ["IB01.L", "CBU0.L"]
   U9:
-    risky: ["CNDX.L", "EIMI.L", "IWDA.L", "IGLN.L", "WSML.L", "IEUX.L", "DPYA.L"]
+    risky: ["IUIT.L", "EIMI.L", "IWDA.L", "IGLN.L", "WSML.L", "IEUX.L", "DPYA.L"]
     safe:  ["IB01.L", "CBU0.L"]
 
 etf_metadata:
-  CNDX.L:
-    name: "iShares NASDAQ 100 UCITS ETF USD (Acc)"
+  IUIT.L:
+    name: "iShares S&P 500 Information Technology Sector UCITS ETF USD (Acc)"
     class: risky
     currency: USD
     category: us_tech

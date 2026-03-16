@@ -694,7 +694,7 @@ def _write_decision_memo(cfg, baseline, optimal_dbs, universe_comp,
 
 ## Stan portfela
 - Kapitał: {cap:,.0f} PLN
-- Obecny koszyk: U5 (CNDX.L, EIMI.L, IWDA.L, IB01.L, CBU0.L)
+- Obecny koszyk: U5 (IUIT.L, EIMI.L, IWDA.L, IB01.L, CBU0.L)
 - Obecnie wygrywający ETF: EIMI.L
 
 ## 1. Broker: {rec_broker}

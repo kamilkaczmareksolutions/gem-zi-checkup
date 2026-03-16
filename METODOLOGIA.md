@@ -13,7 +13,7 @@ Dane dzienne resamplowane do **ostatniego dnia roboczego miesiąca** (pandas `BM
 
 | Ticker | Start | Opis |
 |--------|-------|------|
-| CNDX.L | 2012-01 | iShares NASDAQ 100 |
+| IUIT.L | 2012-01 | iShares S&P 500 Information Technology Sector |
 | IWDA.L | 2012-01 | iShares MSCI World |
 | CBU0.L | 2012-01 | iShares Treasury 7-10yr |
 | IGLN.L | 2012-01 | iShares Physical Gold |
@@ -29,7 +29,7 @@ Symulacja **nie wymaga**, by wszystkie ETF-y miały dane od tego samego dnia. Al
 
 Każdy ETF jest przypisany do jednej z dwóch klas:
 
-- **Risky** (ryzykowne): CNDX.L, EIMI.L, IWDA.L, IGLN.L, WSML.L, IEUX.L, DPYA.L
+- **Risky** (ryzykowne): IUIT.L, EIMI.L, IWDA.L, IGLN.L, WSML.L, IEUX.L, DPYA.L
 - **Safe** (bezpieczne): IB01.L, CBU0.L
 
 Podział ten jest kluczowy dla filtra absolute momentum (patrz sekcja 2.2).
@@ -142,6 +142,8 @@ recommended = median(OOS_deadbands)
 Motywacja: IS optimum jest podatny na overfitting. Mediana OOS pokazuje, co walk-forward faktycznie wybiera na nowych danych. Mediana jest odporniejsza na skrajne foldy niż średnia.
 
 **Jeden deadband dla wszystkich brokerów** — strategia momentum jest niezależna od brokera; broker wpływa tylko na koszty, nie na sygnał. Dlatego finalny rekomendowany deadband jest stosowany jednolicie.
+
+**Aktualne wyniki:** IS optimum = 7.6%, OOS mediana = 1.7%, rekomendowany deadband = 1.6% (zaokrąglony do siatki).
 
 ### Testowane warianty deadbandu
 
@@ -331,7 +333,7 @@ Trzy warianty koszyka:
 
 | Wariant | ETF-y risky | ETF-y safe |
 |---------|-------------|------------|
-| **U5** | CNDX.L, EIMI.L, IWDA.L | IB01.L, CBU0.L |
+| **U5** | IUIT.L, EIMI.L, IWDA.L | IB01.L, CBU0.L |
 | **U7** | U5 + IGLN.L (złoto), WSML.L (small cap) | IB01.L, CBU0.L |
 | **U9** | U7 + IEUX.L (Europa), DPYA.L (REITs) | IB01.L, CBU0.L |
 

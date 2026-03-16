@@ -16,17 +16,17 @@ Problem w tym, ze czysta teoria nie uwzglednia **realnych kosztow**: przewalutow
 
 | Pytanie | Odpowiedz | Dowod |
 |---------|-----------|-------|
-| Broker | **BOSSA IKE (promocja)** | XIRR 17.98% vs XTB IKE 17.25% vs mBank eMakler IKE 17.79% (DCA 1000 PLN/mies.) |
-| Deadband | **5.4%** (mediana OOS) | IS=6.8%, OOS mediana=5.3%, snap do siatki → 5.4% |
-| Wiecej ETF-ow | **Nie** | U5 (Sharpe 1.50) > U7 (1.46) > U9 (1.48); U5 najlepszy XIRR |
-| mBank eMakler vs BOSSA | **BOSSA lepsza** | 0% FX (subkonta) > 0.2% FX mBank eMakler; ale mBank eMakler 0% prowizji na stale |
-| Rachunek opodatkowany | **Katastrofa** | XIRR 15.24% vs ~18% IKE (podatek Belki niszczy strategie rotacyjna) |
+| Broker | **BOSSA IKE (promocja)** | XIRR 17.11% vs XTB IKE 15.28% vs mBank eMakler IKE 16.75% (DCA 1000 PLN/mies.) |
+| Deadband | **1.6%** (mediana OOS) | IS=7.6%, OOS mediana=1.7%, snap do siatki → 1.6% |
+| Wiecej ETF-ow | **Tak** | U9 (Sharpe 1.52, XIRR 18.51%) > U5 (1.47, 17.18%) > U7 (1.44, 15.80%); U9 najlepszy przy rekomendowanym deadband |
+| mBank eMakler vs BOSSA | **BOSSA lepsza** | 0% FX (subkonta) > 0.1% FX mBank eMakler; ale mBank eMakler 0% prowizji na stale |
+| Rachunek opodatkowany | **Katastrofa** | XIRR 13.95% vs ~17% IKE (podatek Belki niszczy strategie rotacyjna) |
 
 ## Koszyk ETF (U5)
 
 | Ticker | Co to jest | Klasa |
 |--------|-----------|-------|
-| CNDX.L | iShares NASDAQ 100 | Ryzykowne |
+| IUIT.L | iShares S&P 500 Information Technology Sector | Ryzykowne |
 | EIMI.L | iShares MSCI Emerging Markets | Ryzykowne |
 | IWDA.L | iShares MSCI World | Ryzykowne |
 | IB01.L | iShares Treasury 0-1yr (gotowka) | Bezpieczne |
@@ -37,12 +37,12 @@ Problem w tym, ze czysta teoria nie uwzglednia **realnych kosztow**: przewalutow
 ```
 Co miesiac:
   1. Oblicz momentum = Price[t-1] / Price[t-13] - 1    (pelne 12 mies. zwrotu, skip ostatni miesiac)
-  2. Najlepszy ryzykowny ETF = max(momentum CNDX, EIMI, IWDA)
+  2. Najlepszy ryzykowny ETF = max(momentum IUIT, EIMI, IWDA)
   3. Jesli momentum najlepszego < 0:
        → kup najlepsza obligacje (IB01 lub CBU0)        [risk-off]
      W przeciwnym razie:
        → kup najlepszy ryzykowny ETF                     [risk-on]
-  4. Rotuj TYLKO jesli roznica momentum > deadband (5.4%)
+  4. Rotuj TYLKO jesli roznica momentum > deadband (1.6%)
      WYJATEK: zmiana rezimu (risk-on ↔ risk-off) -- rotuj bezwarunkowo
 ```
 
@@ -128,11 +128,11 @@ Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance 
 
 ## Testy odpornosci
 
-- **Walk-forward**: 60 mies. trening / 24 mies. test / 4 foldy (nienakl. sie okna). Sredni OOS return: 30.68% (skumulowany, 2-letni), annualizowany: 13.17%.
-- **Deadband**: IS optimum=6.8% (informacyjnie, podatny na overfitting). Mediana OOS=5.3%, snap do siatki → **5.4%**.
+- **Walk-forward**: 60 mies. trening / 24 mies. test / 4 foldy (nienakl. sie okna). Sredni OOS return: 42.78% (skumulowany, 2-letni), annualizowany: 18.50%.
+- **Deadband**: IS optimum=7.6% (informacyjnie, podatny na overfitting). Mediana OOS=1.7%, snap do siatki → **1.6%**.
 - **Timing luck**: XIRR od 12.71% do 17.14% w zaleznosci od dnia rebalancingu (std=1.87%).
 - **Czulosc FX**: kazde 0.25 pp kosztu FX zjada ~20k-22k PLN wartosci koncowej.
-- **Porownanie uniwersow**: U5 > U7 > U9 (wiecej ETF-ow = wiecej rotacji = gorsze wyniki netto).
+- **Porownanie uniwersow**: U9 > U5 > U7 (wiecej ETF-ow = lepsza dywersyfikacja = lepsze wyniki netto przy optymalnym deadband).
 
 ## Dokumentacja
 

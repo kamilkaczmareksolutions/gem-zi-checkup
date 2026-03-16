@@ -55,6 +55,7 @@
 - Zakres testów: 0.0% do 8.0% co 0.2 pp.
 - Wariant dynamiczny: `Delta = base + k * sigma(6m)`.
 - Wybór optymalnego: **mediana OOS** — IS optimum (informacyjnie, z constraint MaxDD <= benchmark + 10% margin, oceniany na najtańszym brokerze IKE) wyznacza górną granicę. Rekomendowany deadband = mediana deadbandów wybranych per fold OOS w walk-forward, zaokrąglona do siatki. Jeden deadband dla wszystkich brokerów.
+- **Aktualne wyniki:** IS optimum = 7.6%, OOS mediana = 1.7%, rekomendowany deadband = 1.6%.
 
 ## Walk-Forward
 - Okno treningowe: 60 miesięcy (5 lat).
