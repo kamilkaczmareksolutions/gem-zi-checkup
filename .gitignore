@@ -4,4 +4,6 @@ data_cache/
 .cursor/
 *.plan.md
 .env
+.env.*
+!.env.example
 results/youtube_insights/
