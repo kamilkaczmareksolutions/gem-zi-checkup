@@ -40,7 +40,7 @@ Full methodology: [METODOLOGIA.md](METODOLOGIA.md), assumptions: [assumptions.md
 
 - Simplified fee model: it does not reproduce every broker tariff threshold (for example XTB's monthly turnover limit). See the cost note in [README.pl.md](README.pl.md).
 - Backtest only, on 2012+ LSE ETF history; IB01 starts in 2019, EIMI in 2014.
-- Stage 7 (CPI-indexed contributions) needs `GUS_API_KEY`: without it and without cached CPI data the run stops at that stage.
+- Stage 7 revalorizes contributions from the GUS API when `GUS_API_KEY` is set or `data_cache/cpi_annual_cache.json` exists. Without both, the run continues, prints that CPI data is missing, and keeps monthly deposits flat.
 - Docs, console output and the decision memo are in Polish.
 - Educational project. Not investment advice.
 

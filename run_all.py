@@ -510,7 +510,16 @@ def etap7(cfg, baseline_summary, optimal_dbs, universe_comp, universe_comp_oos, 
     # Contribution scenarios — start from 0 PLN, inflation-adjusted monthly contributions
     print("\n  Scenariusze z regularnymi wpłatami (kapitał startowy = 0, rewaloryzacja CPI):")
     inflation_rates = load_cpi_annual()
-    print(f"  CPI załadowane z pliku GUS ({len(inflation_rates)} lat: {min(inflation_rates)}–{max(inflation_rates)})")
+    if inflation_rates:
+        print(
+            f"  CPI załadowane z pliku GUS ({len(inflation_rates)} lat: "
+            f"{min(inflation_rates)}–{max(inflation_rates)})"
+        )
+    else:
+        print(
+            "  Brak danych CPI: GUS_API_KEY nie jest ustawiony albo API jest niedostępne, "
+            "a cache jest pusty. Wpłaty bez rewaloryzacji."
+        )
 
     # Determine simulation date range (same as backtest would use)
     from src.momentum import compute_momentum, select_best
