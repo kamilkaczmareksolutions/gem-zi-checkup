@@ -7,6 +7,7 @@ import pandas as pd
 
 from .backtest import run_gem, BacktestResult
 from .broker import BrokerModel
+from .data import build_contribution_schedule
 from .metrics import compute_all
 
 
@@ -412,22 +413,18 @@ def timing_luck_test(
     """Test sensitivity to rebalancing day within each month.
 
     *offsets*: list of business-day offsets from month start (0 = first day).
-    We resample daily prices to the Nth business day of each month.
-    When contribution_schedule is provided, a new schedule is built for
-    the resampled dates using the same base amount and inflation rates.
     """
-    from .data import build_contribution_schedule
-
     rows = []
     for offset in offsets:
         try:
             monthly = _resample_nth_bday(daily_prices, offset)
             if monthly.empty or len(monthly) < 15:
                 continue
-            # Rebuild contribution schedule for resampled dates
             sched = None
-            if base_contribution > 0 and inflation_rates:
-                sched = build_contribution_schedule(base_contribution, monthly.index, inflation_rates)
+            if base_contribution > 0:
+                sched = build_contribution_schedule(
+                    base_contribution, monthly.index, inflation_rates or {},
+                )
             res = run_gem(monthly, broker, risky, safe, initial_capital, deadband=deadband,
                           contribution_schedule=sched)
             m = compute_all(res.equity, label=f"day_offset={offset}",
