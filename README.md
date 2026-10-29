@@ -1,164 +1,49 @@
 # GEM ZI Checkup
 
-Ilosciowa analiza zmodyfikowanej strategii **Global Equity Momentum (GEM)** w kontekscie polskiego konta **IKE** - z pelnym backtestem, kalibracją kosztow brokerskich i walidacja out-of-sample.
+**Backtest of the Global Equity Momentum (GEM) ETF rotation strategy with real Polish broker costs: which IKE account, which rotation threshold (deadband), and whether more ETFs help, validated out-of-sample.**
 
-## Po co to jest
+![Demo: run_all.py downloads 9 LSE ETFs, compares GEM net results across 5 broker/account models and picks a 5.4% deadband from walk-forward OOS](docs/demo.gif)
 
-Strategia GEM to algorytm rotacyjny: co miesiac wrzucasz 100% kapitalu w jeden ETF - ten, ktory ma najsilniejszy trend (momentum). Gdy rynki spadaja, algorytm automatycznie przenosi kapital do obligacji.
+<sub>Real run (excerpt) of `python run_all.py` on public Yahoo Finance prices, Oct 2026, without a GUS API key. Polish README with full results: [README.pl.md](README.pl.md).</sub>
 
-Problem w tym, ze czysta teoria nie uwzglednia **realnych kosztow**: przewalutowania (XTB inkasuje 0.5% na kazdej konwersji PLN/USD), brak akcji ulamkowych (BOSSA, mBank eMakler), podatek Belki, slippage. Ten projekt odpowiada na konkretne pytania:
+## Why
 
-1. **XTB IKE, BOSSA IKE czy mBank eMakler IKE?** -- co jest lepsze dla strategii rotacyjnej przy regularnych wplatach (DCA)?
-2. **Jaki deadband (prog rotacji)?** -- o ile punktow procentowych nowy ETF musi bic obecny, zeby rotacja sie oplacala po kosztach?
-3. **Czy dodawac nowe ETF-y** (zloto, small capy, REITs, Europa ex-US)?
+GEM is a simple monthly rule: hold the risk asset with the strongest 12-month momentum, switch to bonds when momentum turns negative. On paper it beats buy-and-hold. In a real Polish account, currency conversion on every rotation, no fractional shares, commissions, slippage and the 19% capital-gains tax (outside IKE) eat a large part of that edge. This project answers three practical questions with numbers:
 
-## Kluczowe wyniki
+1. **Which broker?** XTB IKE vs BOSSA IKE vs mBank eMakler IKE vs a taxed account, with monthly contributions (DCA).
+2. **Which deadband?** How much better must a new ETF's momentum be before a rotation pays for its costs?
+3. **More ETFs?** Does adding gold, small caps or Europe ex-US (U5 vs U7 vs U9) improve net results?
 
-| Pytanie | Odpowiedz | Dowod |
-|---------|-----------|-------|
-| Broker | **BOSSA IKE (promocja)** | XIRR 17.98% vs XTB IKE 17.25% vs mBank eMakler IKE 17.79% (DCA 1000 PLN/mies.) |
-| Deadband | **5.4%** (mediana OOS) | IS=6.8%, OOS mediana=5.3%, snap do siatki → 5.4% |
-| Wiecej ETF-ow | **Nie** | U5 (Sharpe 1.50) > U7 (1.46) > U9 (1.48); U5 najlepszy XIRR |
-| mBank eMakler vs BOSSA | **BOSSA lepsza** | 0% FX (subkonta) > 0.2% FX mBank eMakler; ale mBank eMakler 0% prowizji na stale |
-| Rachunek opodatkowany | **Katastrofa** | XIRR 15.24% vs ~18% IKE (podatek Belki niszczy strategie rotacyjna) |
-
-## Koszyk ETF (U5)
-
-| Ticker | Co to jest | Klasa |
-|--------|-----------|-------|
-| CNDX.L | iShares NASDAQ 100 | Ryzykowne |
-| EIMI.L | iShares MSCI Emerging Markets | Ryzykowne |
-| IWDA.L | iShares MSCI World | Ryzykowne |
-| IB01.L | iShares Treasury 0-1yr (gotowka) | Bezpieczne |
-| CBU0.L | iShares Treasury 7-10yr | Bezpieczne |
-
-## Jak to dziala (algorytm)
-
-```
-Co miesiac:
-  1. Oblicz momentum = Price[t-1] / Price[t-13] - 1    (pelne 12 mies. zwrotu, skip ostatni miesiac)
-  2. Najlepszy ryzykowny ETF = max(momentum CNDX, EIMI, IWDA)
-  3. Jesli momentum najlepszego < 0:
-       → kup najlepsza obligacje (IB01 lub CBU0)        [risk-off]
-     W przeciwnym razie:
-       → kup najlepszy ryzykowny ETF                     [risk-on]
-  4. Rotuj TYLKO jesli roznica momentum > deadband (5.4%)
-     WYJATEK: zmiana rezimu (risk-on ↔ risk-off) -- rotuj bezwarunkowo
-```
-
-## Struktura projektu
-
-```
-.
-├── run_all.py               # Glowny runner -- uruchamia cala analize
-├── spec_inputs.yaml         # Konfiguracja parametrow (brokerzy, ETF-y, deadbandy)
-├── .env.local               # Szablon zmiennych srodowiskowych (klucz GUS API)
-├── .env                     # Twoj klucz API (NIE commitowany, w .gitignore)
-├── assumptions.md           # Jawne zalozenia symulacji
-├── METODOLOGIA.md           # Pelna dokumentacja techniczna metodologii
-├── requirements.txt         # Zaleznosci Python
-│
-├── src/
-│   ├── config.py            # Ladowanie YAML
-│   ├── data.py              # Pobieranie danych z Yahoo Finance + CPI z GUS API + build_contribution_schedule
-│   ├── momentum.py          # Momentum 13-1 + dual momentum (selekcja celu)
-│   ├── broker.py            # Modele kosztowe: XTB, BOSSA, mBank eMakler, rachunek opodatkowany
-│   ├── backtest.py          # Glowna petla symulacji (kupno/sprzedaz/koszty/podatki)
-│   ├── metrics.py           # XIRR, Sharpe, Sortino, MaxDD, Calmar
-│   └── analysis.py          # Sweep deadbandow, walk-forward, timing luck
-│
-├── youtube_insights/        # Analiza komentarzy YouTube (osobny modul)
-│   ├── run_comments_insights.py   # Entrypoint: python -m youtube_insights
-│   ├── youtube_client.py          # YouTube Data API v3 client
-│   ├── checkpoint_store.py        # Inkrementalny checkpoint (fingerprinting watkow)
-│   ├── gemini_analyzer.py         # Gemini: ekstrakcja insightow + agregacja ROI
-│   ├── report_builder.py          # Generator raportu Markdown
-│   ├── schemas.py                 # Modele danych
-│   └── config.example.yaml        # Konfiguracja playlisty, modelu, wag ROI
-│
-└── results/
-    ├── decision_memo.md     # Finalna rekomendacja (backtest)
-    ├── youtube_insights/    # Wyniki analizy komentarzy
-    │   ├── reports/         # Raporty Markdown (ROI ranking)
-    │   ├── raw/             # Surowe snapshoty watkow (JSONL)
-    │   └── state/           # Checkpoint (nie commitowany)
-    ├── *.png, *.csv         # Wykresy i dane z backtestu
-    └── ...
-```
-
-## Konfiguracja
-
-Skopiuj plik `.env.local` do `.env` i wpisz swoje klucze API:
+## Quick start
 
 ```bash
-cp .env.local .env
-# Edytuj .env i wstaw:
-#   GUS_API_KEY     — klucz z https://api.stat.gov.pl/Home/BdlApi (darmowy)
-#   YOUTUBE_API_KEY — klucz YouTube Data API v3 z Google Cloud Console
-#   GEMINI_API_KEY  — klucz Gemini API z https://aistudio.google.com/apikey
-```
-
-## Uruchomienie
-
-### Backtest GEM (glowna analiza)
-
-```bash
+git clone https://github.com/kamilkaczmareksolutions/gem-zi-checkup.git
+cd gem-zi-checkup
 pip install -r requirements.txt
-python -m run_all
+cp .env.example .env        # set GUS_API_KEY (free, https://api.stat.gov.pl/Home/BdlApi) for CPI-indexed contributions
+python run_all.py           # results/*.csv, results/*.png, results/decision_memo.md
 ```
 
-Wyniki laduja do `results/`. Pierwsze uruchomienie pobiera dane z Yahoo Finance (~1 min), kolejne korzystaja z cache.
+The first run downloads prices from Yahoo Finance; later runs use a local cache.
 
-## Co dokladnie robi `run_all.py`
+## How it works
 
-| Etap | Co robi | Wynik |
-|------|---------|-------|
-| 1 | Pobiera dane, waliduje pokrycie | `data_coverage.csv` |
-| 2 | Baseline GEM (5 ETF, deadband=0) na 5 brokerach | Krzywe kapitalowe, trade logi |
-| 3 | Sweep 41 wartosci deadbandu (0-8%) per broker | Heatmapy XIRR/Sharpe vs deadband |
-| 4 | Kalibracja IS (najtanszy IKE, MaxDD + 10% margin) | IS optymalny deadband |
-| 6 | Walk-forward (4 foldy OOS), timing luck, czulosc FX | Walidacja odpornosci, mediana OOS |
-| 5 | Porownanie koszykow U5 / U7 / U9 (IS + OOS deadband) | Czy dodawac ETF-y |
-| 7 | Scenariusze z wplatami, crossover XTB/BOSSA/ mBank eMakler | `decision_memo.md` |
+- **Strategy** (`src/momentum.py`): momentum = Price[t-1] / Price[t-13] - 1; best of CNDX / EIMI / IWDA if positive, otherwise best bond ETF (IB01 / CBU0); rotate only when the momentum gap exceeds the deadband, except on a risk-on / risk-off regime change.
+- **Broker models** (`src/broker.py`, `spec_inputs.yaml`): FX cost per leg and on contributions, commission, slippage, fractional shares, currency sub-accounts, 19% Belka tax for the taxed account.
+- **Simulation** (`src/backtest.py`, `src/metrics.py`): monthly DCA from zero capital, XIRR, Sharpe, Sortino, MaxDD, Calmar.
+- **Pipeline** (`run_all.py`): data coverage check, baseline on 5 account models, deadband sweep (0-8%), in-sample calibration, walk-forward out-of-sample validation (60/24-month windows), timing-luck and FX-sensitivity tests, ETF universe comparison, contribution scenarios with CPI from the GUS API, and a final `decision_memo.md`.
+- **Optional** `youtube_insights/` (`python -m youtube_insights`): pulls comments from a YouTube playlist (YouTube Data API) and ranks recurring investor questions with Gemini. Needs `YOUTUBE_API_KEY`, `GEMINI_API_KEY`, `YOUTUBE_PLAYLIST_ID`.
 
-## Modele brokerow
+Full methodology: [METODOLOGIA.md](METODOLOGIA.md), assumptions: [assumptions.md](assumptions.md), latest committed recommendation: [results/decision_memo.md](results/decision_memo.md) (all in Polish).
 
-| Parametr | XTB IKE | BOSSA IKE (promocja) | BOSSA IKE (standard) | mBank eMakler IKE | XTB Konto opodatkowane |
-|----------|--------:|------------:|---------------:|----------:|-------------:|
-| FX per leg (rotacja) | 0.50% | 0.00% | 0.00% | 0.10% | 0.00% |
-| FX na wplatach | -- | 0.10% | 0.10% | -- | 0.20% (Walutomat) |
-| Prowizja | 0% | 0% (promocja) | 0.29% (min 14 PLN) | 0% (stale) | 0% |
-| Slippage | 0.10% | 0.10% | 0.10% | 0.10% | 0.10% |
-| Akcje ulamkowe | TAK | NIE | NIE | NIE | TAK |
-| Subkonta walut. | NIE | TAK | TAK | NIE | TAK |
-| Podatek od zysku | 0% (IKE) | 0% (IKE) | 0% (IKE) | 0% (IKE) | 19% |
-| **Koszt rotacji** | **~1.2%** | **~0.2%** | **~0.78%+** | **~0.4%** | **~0.2% + podatek** |
+## Limitations
 
-**Uproszczony model kosztów w symulacji:** Backtest używa parametrów z `spec_inputs.yaml` jako celu modelowania, ale **nie odtwarza wszystkich progów taryfowych brokerów**. W szczególności: (a) w przypadku XTB IKE przyjęto prowizję 0% niezależnie od miesięcznego obrotu (ignorując próg 100k EUR/mies. i wyższe stawki), a kluczowym kosztem transakcyjnym poza slippage jest FX per leg = 0,5%; (b) dla mBank eMakler IKE model zakłada 0% prowizji na ETF-y (zgodnie z ofertą „0% na ETF-y”), koncentrując się na koszcie FX 0,1% per leg i braku subkont walutowych. Celem jest przejrzyste porównanie strategii między brokerami bez nadmiernej zależności od szczegółowych, zmiennych progów tabel opłat.
+- Simplified fee model: it does not reproduce every broker tariff threshold (for example XTB's monthly turnover limit). See the cost note in [README.pl.md](README.pl.md).
+- Backtest only, on 2012+ LSE ETF history; IB01 starts in 2019, EIMI in 2014.
+- Stage 7 (CPI-indexed contributions) needs `GUS_API_KEY`: without it and without cached CPI data the run stops at that stage.
+- Docs, console output and the decision memo are in Polish.
+- Educational project. Not investment advice.
 
-## Testy odpornosci
+## License
 
-- **Walk-forward**: 60 mies. trening / 24 mies. test / 4 foldy (nienakl. sie okna). Sredni OOS return: 30.68% (skumulowany, 2-letni), annualizowany: 13.17%.
-- **Deadband**: IS optimum=6.8% (informacyjnie, podatny na overfitting). Mediana OOS=5.3%, snap do siatki → **5.4%**.
-- **Timing luck**: XIRR od 12.71% do 17.14% w zaleznosci od dnia rebalancingu (std=1.87%).
-- **Czulosc FX**: kazde 0.25 pp kosztu FX zjada ~20k-22k PLN wartosci koncowej.
-- **Porownanie uniwersow**: U5 > U7 > U9 (wiecej ETF-ow = wiecej rotacji = gorsze wyniki netto).
-
-## Dokumentacja
-
-- [`METODOLOGIA.md`](METODOLOGIA.md) -- pelna dokumentacja techniczna (co, jak i dlaczego jest liczone)
-- [`assumptions.md`](assumptions.md) -- jawne zalozenia symulacji
-- [`spec_inputs.yaml`](spec_inputs.yaml) -- wszystkie parametry w jednym pliku
-- [`results/decision_memo.md`](results/decision_memo.md) -- finalna rekomendacja z liczbami
-
-## Analiza komentarzy (youtube_insights)
-
-Osobny modul (`python -m youtube_insights`) analizujacy komentarze z YouTube przy pomocy Gemini LLM. Cel: zidentyfikowac najczestsze pytania, watpliwosci i problemy inwestorow wokol strategii GEM, zeby lepiej adresowac je w przyszlych materialach edukacyjnych. Wyniki sa rankingowane wg wskaznika ROI (czestotliwosc × dotkliwosc × akcjonowalnosc × intencja zakupowa).
-
-W przyszlosci modul zostanie rozszerzony o zrodla: X (Twitter), Wykop i Reddit.
-
-Konfiguracja: w `.env` ustaw `YOUTUBE_API_KEY` (klucz YouTube Data API v3 z Google Cloud Console), `GEMINI_API_KEY` i `YOUTUBE_PLAYLIST_ID` (ID playlisty, ktorej komentarze chcesz przeanalizowac).
-
-## Licencja
-
-Projekt edukacyjny. Uzywasz na wlasne ryzyko. To nie jest rekomendacja inwestycyjna.
+No license file yet: all rights reserved by the authors until one is added.
