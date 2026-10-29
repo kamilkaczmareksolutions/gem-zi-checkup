@@ -160,7 +160,13 @@ def load_cpi_annual(min_year: int = 2000, max_year: int = 2025) -> dict[int, flo
         with open(GUS_CPI_CACHE, "w") as f:
             _json.dump(merged, f, indent=2)
     except Exception as exc:
-        warnings.warn(f"GUS API unavailable ({exc}), using cached data only")
+        if cached:
+            warnings.warn(f"GUS API unavailable ({exc}), using cached data only")
+        else:
+            warnings.warn(
+                f"GUS API unavailable ({exc}). Brak cache CPI. "
+                "Szereg CPI jest pusty, wpłaty bez rewaloryzacji."
+            )
 
     combined = {**cached, **api_data}
 
