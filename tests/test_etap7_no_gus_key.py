@@ -1,5 +1,3 @@
-"""ETAP 7 keeps going when the CPI series is empty."""
-
 from __future__ import annotations
 
 import contextlib
