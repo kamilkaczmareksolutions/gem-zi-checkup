@@ -1,5 +1,3 @@
-"""Timing luck reports a money-weighted return for each entry day."""
-
 from __future__ import annotations
 
 import unittest
